@@ -1,0 +1,30 @@
+{
+  "kit": { "theme": "mono", "accent": "ffd9d6cc" },
+  "knobImage": "knob.png",
+  "knobFrames": 127,
+  "style": { "background": "ffa7a8a4", "accent": "ffb0402c", "text": "ff0b0a09", "muted": "ff1f1d1a" },
+  "pages": [
+    { "name": "ACID",
+      "controls": [
+        { "param": "Cutoff",     "widget": "knob" },
+        { "param": "Accent",     "widget": "knob" },
+        { "param": "Wave",       "widget": "switch" },
+        { "widget": "empty" },
+
+        { "param": "Resonance",  "widget": "knob" },
+        { "param": "Accent Thr", "widget": "knob" },
+        { "param": "Tuning",     "widget": "knob", "polarity": "bipolar" },
+        { "widget": "empty" },
+
+        { "param": "Env Mod",    "widget": "knob" },
+        { "param": "Slide Time", "widget": "knob" },
+        { "param": "Drive",      "widget": "knob" },
+        { "widget": "empty" },
+
+        { "param": "Decay",      "widget": "knob" },
+        { "widget": "empty" },
+        { "param": "Volume",     "widget": "fader" },
+        { "widget": "empty" }
+      ] }
+  ]
+}

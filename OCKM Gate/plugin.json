@@ -1,0 +1,17 @@
+{
+  "name": "OCKM Gate",
+  "manufacturer": "OCKM",
+  "version": "1.0.0",
+  "format": "vst2",
+  "kind": "effect",
+  "uid": "OySY",
+  "numInputs": 2,
+  "numOutputs": 2,
+  "category": "Effect",
+  "file32": "VST/ockm-gate-arm32.so",
+  "file64": "VST/ockm-gate-arm64.so",
+  "description": "Tempo-locked trance gate and pump: 16 steps with levels, tap-in rhythm, and Gate, Pump, Smooth and Ping-Pong pulse shapes that lock to the MPC's sequencer.",
+  "author": "OCKM",
+  "url": "",
+  "license": "MIT"
+}

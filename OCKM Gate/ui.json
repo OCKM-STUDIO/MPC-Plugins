@@ -1,0 +1,225 @@
+{
+  "kit": {
+    "theme": "mono",
+    "accent": "ffd9d6cc"
+  },
+  "knobImage": "knob.png",
+  "knobFrames": 127,
+  "style": {
+    "background": "ff8f979f",
+    "accent": "ffb0402c",
+    "text": "ff0b0a09",
+    "muted": "ff1f1d1a"
+  },
+  "pages": [
+    {
+      "name": "GATE",
+      "controls": [
+        {
+          "param": "Mode",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "Attack",
+          "widget": "knob"
+        },
+        {
+          "param": "Rate",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "Tap Rec",
+          "widget": "switch"
+        },
+        {
+          "param": "Depth",
+          "widget": "knob"
+        },
+        {
+          "param": "Length",
+          "widget": "knob"
+        },
+        {
+          "param": "Steps",
+          "widget": "knob"
+        },
+        {
+          "param": "TAP",
+          "widget": "switch"
+        },
+        {
+          "param": "Mix",
+          "widget": "fader"
+        },
+        {
+          "param": "Release",
+          "widget": "knob"
+        },
+        {
+          "param": "Swing",
+          "widget": "knob"
+        },
+        {
+          "param": "Run Stopped",
+          "widget": "switch"
+        },
+        {
+          "param": "Width",
+          "widget": "knob"
+        },
+        {
+          "param": "Curve",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "param": "Output",
+          "widget": "fader"
+        }
+      ]
+    },
+    {
+      "name": "STEPS",
+      "controls": [
+        {
+          "param": "Step 1",
+          "widget": "switch"
+        },
+        {
+          "param": "Step 2",
+          "widget": "switch"
+        },
+        {
+          "param": "Step 3",
+          "widget": "switch"
+        },
+        {
+          "param": "Step 4",
+          "widget": "switch"
+        },
+        {
+          "param": "Step 5",
+          "widget": "switch"
+        },
+        {
+          "param": "Step 6",
+          "widget": "switch"
+        },
+        {
+          "param": "Step 7",
+          "widget": "switch"
+        },
+        {
+          "param": "Step 8",
+          "widget": "switch"
+        },
+        {
+          "param": "Step 9",
+          "widget": "switch"
+        },
+        {
+          "param": "Step 10",
+          "widget": "switch"
+        },
+        {
+          "param": "Step 11",
+          "widget": "switch"
+        },
+        {
+          "param": "Step 12",
+          "widget": "switch"
+        },
+        {
+          "param": "Step 13",
+          "widget": "switch"
+        },
+        {
+          "param": "Step 14",
+          "widget": "switch"
+        },
+        {
+          "param": "Step 15",
+          "widget": "switch"
+        },
+        {
+          "param": "Step 16",
+          "widget": "switch"
+        }
+      ]
+    },
+    {
+      "name": "LEVELS",
+      "controls": [
+        {
+          "param": "Lvl 1",
+          "widget": "knob"
+        },
+        {
+          "param": "Lvl 2",
+          "widget": "knob"
+        },
+        {
+          "param": "Lvl 3",
+          "widget": "knob"
+        },
+        {
+          "param": "Lvl 4",
+          "widget": "knob"
+        },
+        {
+          "param": "Lvl 5",
+          "widget": "knob"
+        },
+        {
+          "param": "Lvl 6",
+          "widget": "knob"
+        },
+        {
+          "param": "Lvl 7",
+          "widget": "knob"
+        },
+        {
+          "param": "Lvl 8",
+          "widget": "knob"
+        },
+        {
+          "param": "Lvl 9",
+          "widget": "knob"
+        },
+        {
+          "param": "Lvl 10",
+          "widget": "knob"
+        },
+        {
+          "param": "Lvl 11",
+          "widget": "knob"
+        },
+        {
+          "param": "Lvl 12",
+          "widget": "knob"
+        },
+        {
+          "param": "Lvl 13",
+          "widget": "knob"
+        },
+        {
+          "param": "Lvl 14",
+          "widget": "knob"
+        },
+        {
+          "param": "Lvl 15",
+          "widget": "knob"
+        },
+        {
+          "param": "Lvl 16",
+          "widget": "knob"
+        }
+      ]
+    }
+  ]
+}

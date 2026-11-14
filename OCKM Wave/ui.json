@@ -1,0 +1,229 @@
+{
+  "kit": {
+    "theme": "mono",
+    "accent": "ffd9d6cc"
+  },
+  "knobImage": "knob.png",
+  "knobFrames": 127,
+  "style": {
+    "background": "ffb3ab96",
+    "accent": "ffb0402c",
+    "text": "ff0b0a09",
+    "muted": "ff1f1d1a"
+  },
+  "pages": [
+    {
+      "name": "WAVE",
+      "controls": [
+        {
+          "param": "Table",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "Unison",
+          "widget": "knob"
+        },
+        {
+          "param": "Voice Mode",
+          "widget": "switch"
+        },
+        {
+          "param": "Output",
+          "widget": "fader"
+        },
+        {
+          "param": "Position",
+          "widget": "knob"
+        },
+        {
+          "param": "Detune",
+          "widget": "knob"
+        },
+        {
+          "param": "Glide",
+          "widget": "knob"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "param": "Warp",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "Spread",
+          "widget": "knob"
+        },
+        {
+          "param": "Octave",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "param": "Warp Amt",
+          "widget": "knob"
+        },
+        {
+          "param": "Sub Level",
+          "widget": "fader"
+        },
+        {
+          "param": "Vel>Amp",
+          "widget": "knob"
+        },
+        {
+          "widget": "empty"
+        }
+      ]
+    },
+    {
+      "name": "FILTER",
+      "controls": [
+        {
+          "param": "Filter",
+          "widget": "switch"
+        },
+        {
+          "param": "Amp Attack",
+          "widget": "fader"
+        },
+        {
+          "param": "Mod Attack",
+          "widget": "fader"
+        },
+        {
+          "param": "Env>Pos",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "Cutoff",
+          "widget": "knob"
+        },
+        {
+          "param": "Amp Decay",
+          "widget": "fader"
+        },
+        {
+          "param": "Mod Decay",
+          "widget": "fader"
+        },
+        {
+          "param": "Env>Warp",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "Resonance",
+          "widget": "knob"
+        },
+        {
+          "param": "Amp Sustain",
+          "widget": "fader"
+        },
+        {
+          "param": "Mod Sustain",
+          "widget": "fader"
+        },
+        {
+          "param": "Env>Cutoff",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "Key Track",
+          "widget": "knob"
+        },
+        {
+          "param": "Amp Release",
+          "widget": "fader"
+        },
+        {
+          "param": "Mod Release",
+          "widget": "fader"
+        },
+        {
+          "widget": "empty"
+        }
+      ]
+    },
+    {
+      "name": "MOD",
+      "controls": [
+        {
+          "param": "LFO Shape",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "LFO>Pos",
+          "widget": "knob"
+        },
+        {
+          "param": "Wheel>Pos",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "param": "LFO Sync",
+          "widget": "switch"
+        },
+        {
+          "param": "LFO>Warp",
+          "widget": "knob"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "param": "LFO Rate",
+          "widget": "knob",
+          "visibleWhen": {
+            "param": "LFO Sync",
+            "choice": "Off"
+          }
+        },
+        {
+          "param": "LFO>Cutoff",
+          "widget": "knob"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "param": "LFO Div",
+          "widget": "slider",
+          "overlay": "menu",
+          "visibleWhen": {
+            "param": "LFO Sync",
+            "choice": "On"
+          }
+        },
+        {
+          "param": "LFO>Pitch",
+          "widget": "knob"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "widget": "empty"
+        }
+      ]
+    }
+  ]
+}
