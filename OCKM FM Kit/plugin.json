@@ -1,0 +1,17 @@
+{
+  "name": "OCKM FM Kit",
+  "manufacturer": "OCKM",
+  "version": "1.0.0",
+  "format": "vst2",
+  "kind": "instrument",
+  "uid": "O0OH",
+  "numInputs": 0,
+  "numOutputs": 4,
+  "category": "Drums",
+  "file32": "VST/ockm-fm-kit-arm32.so",
+  "file64": "VST/ockm-fm-kit-arm64.so",
+  "description": "Eight one-shot FM drums on notes 36-43 (kick, snare, clap, closed and open hat, two toms, perc) with Tune, Decay, Tone, Level and one character knob each, a Main/Aux output pair and house and techno kits.",
+  "author": "OCKM",
+  "url": "",
+  "license": "MIT"
+}

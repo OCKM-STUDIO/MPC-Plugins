@@ -1,0 +1,226 @@
+{
+  "kit": {
+    "theme": "mono",
+    "accent": "ffd9d6cc"
+  },
+  "knobImage": "knob.png",
+  "knobFrames": 127,
+  "style": {
+    "background": "ffa48c70",
+    "accent": "ffb0402c",
+    "text": "ff0b0a09",
+    "muted": "ff1f1d1a"
+  },
+  "pages": [
+    {
+      "name": "KIT 1",
+      "controls": [
+        {
+          "param": "Kick Tune",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "Snare Tune",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "Clap Tune",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "CHat Tune",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "Kick Decay",
+          "widget": "knob"
+        },
+        {
+          "param": "Snare Decay",
+          "widget": "knob"
+        },
+        {
+          "param": "Clap Decay",
+          "widget": "knob"
+        },
+        {
+          "param": "CHat Decay",
+          "widget": "knob"
+        },
+        {
+          "param": "Kick Tone",
+          "widget": "knob"
+        },
+        {
+          "param": "Snare Tone",
+          "widget": "knob"
+        },
+        {
+          "param": "Clap Tone",
+          "widget": "knob"
+        },
+        {
+          "param": "CHat Tone",
+          "widget": "knob"
+        },
+        {
+          "param": "Kick Level",
+          "widget": "fader"
+        },
+        {
+          "param": "Snare Level",
+          "widget": "fader"
+        },
+        {
+          "param": "Clap Level",
+          "widget": "fader"
+        },
+        {
+          "param": "CHat Level",
+          "widget": "fader"
+        }
+      ]
+    },
+    {
+      "name": "KIT 2",
+      "controls": [
+        {
+          "param": "OHat Tune",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "LTom Tune",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "HTom Tune",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "Perc Tune",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "OHat Decay",
+          "widget": "knob"
+        },
+        {
+          "param": "LTom Decay",
+          "widget": "knob"
+        },
+        {
+          "param": "HTom Decay",
+          "widget": "knob"
+        },
+        {
+          "param": "Perc Decay",
+          "widget": "knob"
+        },
+        {
+          "param": "OHat Tone",
+          "widget": "knob"
+        },
+        {
+          "param": "LTom Tone",
+          "widget": "knob"
+        },
+        {
+          "param": "HTom Tone",
+          "widget": "knob"
+        },
+        {
+          "param": "Perc Tone",
+          "widget": "knob"
+        },
+        {
+          "param": "OHat Level",
+          "widget": "fader"
+        },
+        {
+          "param": "LTom Level",
+          "widget": "fader"
+        },
+        {
+          "param": "HTom Level",
+          "widget": "fader"
+        },
+        {
+          "param": "Perc Level",
+          "widget": "fader"
+        }
+      ]
+    },
+    {
+      "name": "SHAPE",
+      "controls": [
+        {
+          "param": "Kick Punch",
+          "widget": "knob"
+        },
+        {
+          "param": "OHat Metal",
+          "widget": "knob"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "param": "Routing",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "Snare Snap",
+          "widget": "knob"
+        },
+        {
+          "param": "LTom Bend",
+          "widget": "knob"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "param": "Clap Spread",
+          "widget": "knob"
+        },
+        {
+          "param": "HTom Bend",
+          "widget": "knob"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "param": "CHat Metal",
+          "widget": "knob"
+        },
+        {
+          "param": "Perc Ratio",
+          "widget": "knob"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "param": "Master",
+          "widget": "fader"
+        }
+      ]
+    }
+  ]
+}
