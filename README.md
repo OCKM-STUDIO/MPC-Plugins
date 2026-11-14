@@ -11,6 +11,7 @@ MPC One.
 | [OCKM Wave](OCKM%20Wave/) | Instrument | Wavetable synth that teaches as you play: 8 generated wavetables, morph, warp, unison, and 24 lesson presets |
 | [OCKM FM Kit](OCKM%20FM%20Kit/) | Instrument | Eight one-shot FM drums (kick, snare, clap, hats, toms, perc) with house and techno kits and a Main/Aux output pair |
 | [OCKM BSS](OCKM%20BSS/) | Instrument | Warm, round soft bass: rounded sine, sub and saw into a 24 dB filter you can open right up. Cutoff + Decay go from almost a kick to a full growl. Glide and a bass-safe tempo echo |
+| [OCKM DRIFT](OCKM%20DRIFT/) | Instrument | Generative retro analogue mono lead: plays its own 16-step line in time with the MPC and slowly evolves it in key (Mutate, Seed, Lock, Euclidean rhythm). MPC notes move the line with your chords |
 
 ## Installing on an MPC
 

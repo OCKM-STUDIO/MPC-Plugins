@@ -1,0 +1,159 @@
+{
+  "kit": {
+    "theme": "mono",
+    "accent": "ffd9d6cc"
+  },
+  "knobImage": "knob.png",
+  "knobFrames": 127,
+  "style": {
+    "background": "ffa08f9f",
+    "accent": "ffb0402c",
+    "text": "ff0b0a09",
+    "muted": "ff1f1d1a"
+  },
+  "pages": [
+    {
+      "name": "SOUND",
+      "controls": [
+        {
+          "param": "Cutoff",
+          "widget": "knob"
+        },
+        {
+          "param": "Wave",
+          "widget": "knob"
+        },
+        {
+          "param": "Length",
+          "widget": "knob"
+        },
+        {
+          "param": "Keys",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "Resonance",
+          "widget": "knob"
+        },
+        {
+          "param": "Detune",
+          "widget": "knob"
+        },
+        {
+          "param": "Release",
+          "widget": "knob"
+        },
+        {
+          "param": "Play",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "Env Amount",
+          "widget": "knob"
+        },
+        {
+          "param": "Sub",
+          "widget": "knob"
+        },
+        {
+          "param": "Accent",
+          "widget": "knob"
+        },
+        {
+          "param": "Run Stopped",
+          "widget": "switch"
+        },
+        {
+          "param": "Decay",
+          "widget": "knob"
+        },
+        {
+          "param": "Glide",
+          "widget": "knob"
+        },
+        {
+          "param": "Drive",
+          "widget": "knob"
+        },
+        {
+          "param": "Volume",
+          "widget": "fader"
+        }
+      ]
+    },
+    {
+      "name": "GEN",
+      "controls": [
+        {
+          "param": "Mutate",
+          "widget": "knob"
+        },
+        {
+          "param": "Scale",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "Hits",
+          "widget": "knob"
+        },
+        {
+          "param": "Slide",
+          "widget": "knob"
+        },
+        {
+          "param": "Evolve",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "Root",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "Rotate",
+          "widget": "knob"
+        },
+        {
+          "param": "Cut Drift",
+          "widget": "knob"
+        },
+        {
+          "param": "Seed",
+          "widget": "knob"
+        },
+        {
+          "param": "Range",
+          "widget": "knob"
+        },
+        {
+          "param": "Density",
+          "widget": "knob"
+        },
+        {
+          "param": "Swing",
+          "widget": "knob"
+        },
+        {
+          "param": "Lock",
+          "widget": "switch"
+        },
+        {
+          "param": "Octave",
+          "widget": "knob"
+        },
+        {
+          "param": "Rate",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "widget": "empty"
+        }
+      ]
+    }
+  ]
+}
