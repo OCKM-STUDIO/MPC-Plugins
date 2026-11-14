@@ -39,9 +39,11 @@ Each plugin does one job well. Anything beyond that goes in the SPEC's and READM
    `clang++ -std=c++17 -O2 -I$SDK/framework "-I<Plugin>/src" "<Plugin>/tests/harness.cpp" -o "<Plugin>/build/harness" && "<Plugin>/build/harness" "<Plugin>/build/demo.wav"`
 5. **Demo WAV** of the presets, rendered by the harness into `build/`.
 6. **Package:** `python3 $SDK/tools/package.py "<Plugin folder>"`.
-7. **Hand-over to Simon:** the output folder path (`<Plugin>/build/OCKM - VST - <Name>`) and the
-   SD-card steps:
-   - Copy the `OCKM - VST - <Name>` folder into a folder named `VST2 Plugins` on the SD card or drive.
+7. **Hand-over to Simon:** run `python3 sd_card.py` from the repo root. It gathers every plugin's
+   latest build into `SD Card/VST2 Plugins/` and must finish with no warnings. Then give Simon
+   that folder path and the SD-card steps:
+   - Drag everything inside `SD Card/VST2 Plugins` into the `VST2 Plugins` folder on the SD card
+     (not the folder itself, which would replace the card's folder).
    - The MPC needs MPC OS 3.10.1 or later.
    - On the MPC: Preferences → Enhancements (Beta) → turn on **Enable Enhancements** and
      **External Plugin Support**.
