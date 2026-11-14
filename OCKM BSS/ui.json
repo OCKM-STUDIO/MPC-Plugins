@@ -1,0 +1,110 @@
+{
+  "kit": {
+    "theme": "mono",
+    "accent": "ffd9d6cc"
+  },
+  "knobImage": "knob.png",
+  "knobFrames": 127,
+  "style": {
+    "background": "ff9ca685",
+    "accent": "ffb0402c",
+    "text": "ff0b0a09",
+    "muted": "ff1f1d1a"
+  },
+  "pages": [
+    {
+      "name": "BASS",
+      "controls": [
+        {
+          "param": "Cutoff",
+          "widget": "knob"
+        },
+        {
+          "param": "Sub",
+          "widget": "knob"
+        },
+        {
+          "param": "Attack",
+          "widget": "knob"
+        },
+        {
+          "param": "Drive",
+          "widget": "knob"
+        },
+        {
+          "param": "Decay",
+          "widget": "knob"
+        },
+        {
+          "param": "Saw",
+          "widget": "knob"
+        },
+        {
+          "param": "Sustain",
+          "widget": "knob"
+        },
+        {
+          "param": "Echo Time",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "Resonance",
+          "widget": "knob"
+        },
+        {
+          "param": "Detune",
+          "widget": "knob"
+        },
+        {
+          "param": "Release",
+          "widget": "knob"
+        },
+        {
+          "param": "Feedback",
+          "widget": "knob"
+        },
+        {
+          "param": "Env Amount",
+          "widget": "knob"
+        },
+        {
+          "param": "Glide",
+          "widget": "knob"
+        },
+        {
+          "param": "Volume",
+          "widget": "fader"
+        },
+        {
+          "param": "Echo Mix",
+          "widget": "knob"
+        }
+      ]
+    },
+    {
+      "name": "SETUP",
+      "controls": [
+        {
+          "param": "Vel>Filter",
+          "widget": "knob"
+        },
+        "empty",
+        "empty",
+        "empty",
+        "empty",
+        "empty",
+        "empty",
+        "empty",
+        "empty",
+        "empty",
+        "empty",
+        "empty",
+        "empty",
+        "empty",
+        "empty",
+        "empty"
+      ]
+    }
+  ]
+}

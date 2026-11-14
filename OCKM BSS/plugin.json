@@ -1,0 +1,17 @@
+{
+  "name": "OCKM BSS",
+  "manufacturer": "OCKM",
+  "version": "1.0.0",
+  "format": "vst2",
+  "kind": "instrument",
+  "uid": "OgyT",
+  "numInputs": 0,
+  "numOutputs": 2,
+  "category": "Synth",
+  "file32": "VST/ockm-bss-arm32.so",
+  "file64": "VST/ockm-bss-arm64.so",
+  "description": "Warm, round, soft bass: a rounded sine core, sub and a touch of saw into a resonant 24 dB filter you can open from dark and muffled to bright and buzzy. Cutoff and Decay take it from almost a kick to a full-on growl. One note at a time with optional glide, plus a bass-safe tempo-synced echo.",
+  "author": "OCKM",
+  "url": "",
+  "license": "MIT"
+}
