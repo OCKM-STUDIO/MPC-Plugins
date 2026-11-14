@@ -22,7 +22,7 @@
         { "param": "Add Rest",   "widget": "knob" },
 
         { "param": "Decay",      "widget": "knob" },
-        { "widget": "empty" },
+        { "param": "Echo",       "widget": "knob" },
         { "param": "Volume",     "widget": "fader" },
         { "param": "Variation",  "widget": "knob" }
       ] }

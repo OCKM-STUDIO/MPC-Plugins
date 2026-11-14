@@ -12,7 +12,7 @@
 
 Status: **built; current version v1.2** (see the line below and section 11). v1.0 was built and tried on Simon's MPC One with the MPC arp (2026-11-14). It worked, but on Classic Squelch the controls had almost no effect. v1.1 returns to the classic controls and makes the voice work under an arp; see section 0. CPU on the MPC One is still to be measured.
 
-Current version: **v1.2** (Mutate, key tracking, low cut; section 11). Not yet tested on the MPC.
+Current version: **v1.3** (Echo; section 12). v1.2 (Mutate, key tracking, low cut; section 11) sounded great on Simon's MPC One. CPU on the MPC One is still to be measured.
 
 ## 0. v1.1 revision (after the first hardware test)
 
@@ -222,7 +222,7 @@ These items are left out on purpose, under the governing rule. Some may come lat
 - Internal step sequencer (the code is structured for it; see section 1)
 - Extra oscillators, sub-oscillator, noise
 - LFOs, mod matrix, arpeggiator
-- Effects: delay, reverb, chorus, EQ, distortion types beyond the one drive
+- Effects: reverb, chorus, EQ, distortion types beyond the one drive; any delay beyond the one-knob Echo (section 12)
 - Editable macro target assignments, or more than four macros
 - Polyphony and unison
 - Velocity sensitivity beyond accent
@@ -311,3 +311,74 @@ All four are automatable, so Q-Link moves can be recorded into the MPC sequence.
 - Low cut: a 16 Hz saw fundamental is reduced relative to its 33 Hz harmonic (0.81, against 2.0 for a plain saw).
 - Every preset with Mutate at maximum peaks below 0 dBFS.
 - host_sim: 19/19, 30 parameters round-trip, no denormals.
+
+## 12. v1.3: Echo (built 2026-11-14)
+
+Simon tried v1.2 on the MPC ("sounds great") and asked for "a small delay". He was offered the MPC's own insert delay (no plugin change) or a one-knob echo inside OCKM-03, and chose the knob. This is a deliberate exception to "no effects" in section 9, kept to a single control.
+
+- **Parameter 30, `echo`, "Echo", 0–100 %, default 0** (appended; automatable; Q-Link 16 in Program mode).
+- **Time:** a dotted 8th (0.75 beat) at the MPC tempo, 120 BPM when the MPC gives none, tempo limited to 40–300 BPM. The delay glides over 50 ms when the tempo changes. The buffer is 1.2 s, allocated in `prepare()`.
+- **Amount:** the wet level (0.45 × Echo) and the feedback (0.15 + 0.5 × Echo, i.e. 15–65 %) rise together and are smoothed over 50 ms.
+- **Tone:** everything written into the delay passes a one-pole 250 Hz high-pass and a 3.5 kHz low-pass, so even the first repeat is bass-light and each later one is thinner and darker. The dry signal is untouched.
+- **Position:** after the low cut, before Volume and the output ceiling. Mono (output L = R), like the rest of the plugin.
+- **Bypass:** at Echo 0 the echo does nothing at all. After the knob returns to 0, it runs until the tail has been below −120 dB for a whole delay time, then clears its buffer and bypasses again, so old echoes never reappear. Values below 1e-15 entering the line are flushed (no denormal tails).
+- **UI:** the empty Voice slot (row 4), replacing the name badge.
+- **Preset:** Mutant Squelch gets Echo 30. The other presets stay at 0.
+- **CPU:** on the desktop harness, Echo at 60 % costs 0.249 % of real time against 0.243 % with Echo off (about +2 %).
+
+Harness checks (all passing):
+- Echo 0: silence after the note.
+- The first repeat lands a dotted 8th later at 125 BPM and at 100 BPM (within 1,200 samples; the offset is the note's own attack).
+- At Echo 100, repeats fall below −60 dB within 5 s.
+- Turning Echo off and on again brings back no stale echoes.
+- The first repeat's low/high harmonic ratio is under half the dry note's (measured 1.98 against 13.95).
+- Every preset with Echo at maximum peaks below 0 dBFS (worst −1.5 dBFS).
+
+host_sim: 19/19, no warnings.
+
+## 13. v1.4: closer to the classic circuit (built 2026-11-14)
+
+Simon asked for four changes taken from a public circuit study of the classic acid bass unit (the GPL-3 "DW-303" project). Only the **behaviour** described in its circuit notes is used; no code is copied, so OCKM-03 stays MIT. No parameters are added, removed or reordered: projects load the same values but sound closer to the original.
+
+1. **Accent sweep tied to Resonance.** An accent produces a voltage that follows the filter envelope (`Accent × env`). In the original circuit this voltage also charges a capacitor through a diode, so the capacitor only charges up. The capacitor charges with a time constant of about 32 ms at Resonance 0 and 50 ms at Resonance 100, and it drains with a time constant of about 100 ms. The accent's push on the cutoff is a blend of the two. At low Resonance it is mostly the direct voltage, a quick blip. At high Resonance it is mostly the capacitor, so the push swells later ("wow") and builds up over a run of accents. The capacitor cannot charge above the direct voltage, so a constant stream of accents (an arp) cannot pin the filter open. This replaces the v1.1 accent accumulator. Full push at Accent 100: 3 octaves.
+2. **Accent volume as a punch.** The extra level of an accented note follows the accent voltage above a threshold, and dies away with it: `boost = 1 + 1.6 × max(Accent × env − 0.1, 0) / 0.9`, so up to about +8 dB at the very start. Before, it lasted for the whole note.
+3. **Env Mod in both directions.** The envelope rests below the cutoff reference, so turning up Env Mod also lowers the resting cutoff: `envOctaves = EnvMod × 5.5 × (env − 0.3)`. At 100 % the cutoff sweeps from 1.65 octaves below the knob setting to 3.85 octaves above it. Presets are re-balanced for this.
+4. **Diode-ladder filter.** The four-pole ladder is replaced by a model of a diode ladder:
+   - **Stages:** four coupled capacitor stages, where each stage loads its neighbours. The bottom capacitor is 18/33 the size of the other three.
+   - **Saturation:** a tanh at the input transistor pair.
+   - **Output:** taken from the top stage, with ×5 gain (unity at DC without the coupling stages).
+   - **Coupling stages:** two fixed high-passes inside the resonance loop, as in the circuit. One is about 78 Hz on the output stage, which the output also passes through. The other is about 13 Hz in the feedback path.
+   - **Solver:** six states, solved together each sample by zero-delay-feedback trapezoidal integration. The 6×6 matrix is inverted at control rate, every 16 samples. The filter still runs at 2× the host rate.
+   - **Displayed cutoff:** the frequency where resonance peaks (the stage conductance is fc / 1.855).
+   - **Resonance:** at maximum the loop gain is 90 % of the self-oscillation point at mid and high cutoffs. So it rings hard but never whistles on its own. The in-loop high-passes raise the self-oscillation point when the filter is nearly closed, so resonance there is gentler, as in the original.
+   - **Level:** the filter's level loss at high Resonance is partly made up after the filter, so presets stay as loud as in v1.3.
+   - **Not modelled:** the saturation of the inner stages.
+   - **CPU:** the filter costs more than before, about 55 multiply-adds per oversampled sample.
+
+**Tests to add** (in `tests/harness.cpp`):
+- The filter on its own: an impulse at maximum Resonance dies away at five cutoffs. The resonant peak falls within a third of an octave of the displayed cutoff (1 kHz and 3 kHz). It is stable with ±100 inputs. The 78 Hz coupling stage cuts 40 Hz relative to 200 Hz.
+- Accent sweep: at Resonance 90 the accented note's brightness peaks later than at Resonance 10, and a run of accents still builds up.
+- Accent punch: an accented note's level 250 ms in is closer to an unaccented note's than at its start.
+- Env Mod: with Env Mod 100, the late part of a long note is darker than with Env Mod 0 at the same Cutoff.
+- All existing checks still pass: the arp knob checks, presets peaking below 0 dBFS with Mutate and Echo at maximum, and host_sim.
+- Desktop CPU is compared with v1.3, and the new figure is measured on the MPC One.
+
+### 13.1 As built
+
+- **Presets:** Cutoff raised by 9 on presets 2–5 (Classic 52, Rubber 36, Scream 56, Mutant 49), making up for the darker filter and the lower resting cutoff. Rubber Sub's Volume is now −7 dB. The Init Acid defaults are unchanged. Loudness on the harness pattern is within about 1–2 dB of v1.3.
+- **Harness peaks:**
+  - demo: Init −3.95, Classic −2.96, Rubber −2.77, Scream −3.06, Mutant −2.53 dBFS
+  - worst with Mutate at maximum: −4.35 dBFS
+  - worst with Echo at maximum: −1.42 dBFS
+- **Measured:**
+  - the impulse dies away at every cutoff
+  - the peak is 1 semitone below the displayed cutoff at 1 kHz and 3 kHz
+  - 40 Hz / 200 Hz is 0.54
+  - the accented note is brightest at 10 ms (Resonance 10) and 90 ms (Resonance 90)
+  - accent level is 2.64× at the start and 1.62× at 250 ms
+  - the late brightness of a held note falls from 0.0128 to 0.0100 with Env Mod 100
+- **Existing slide test:** now runs at Cutoff 55. With the new resting cutoff and the 78 Hz coupling stage, the old setting left the filter so nearly closed that the brightness measure could not tell a re-pluck apart.
+- **CPU:**
+  - desktop: 0.36 % of real time playing 16ths, against 0.37 % for v1.3
+  - host_sim: 19/19, average 0.24 %
+  - MPC One: still to measure

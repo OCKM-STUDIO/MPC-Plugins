@@ -12,20 +12,29 @@
 //        -> Mutator (v1.2: repeatable per-step octave jumps, slide-ins and rests)
 //        -> AcidVoice:
 //             Oscillator (PolyBLEP saw or slightly narrow square)
-//          -> Filter: 4-pole zero-delay-feedback ladder low-pass, run at 2x the
-//             sample rate, saturated (tanh) input and feedback
-//             cutoff (octaves) = base + EnvMod*filterEnv + accent*(env push + accumulator)
+//          -> Filter (v1.4): diode ladder (4 coupled stages, smaller bottom capacitor), run at
+//             2x the sample rate, tanh input pair, 78 Hz + 13 Hz coupling high-passes inside
+//             the resonance loop
+//             cutoff (octaves) = base + EnvMod*5.5*(filterEnv - 0.3) + 3*accentSweep
 //                                + 0.5 * (pitch - C1) / 12   (key tracking, v1.2)
+//             accentSweep = blend(accent voltage, its charge-only capacitor; by Resonance)
 //          -> Amp: gate with a long fixed decay, 1 ms declick attack, 8 ms release,
-//             accent boost
+//             accent punch (follows the accent voltage)
 //          -> Drive (soft-clip, gain compensated, 0 = clean)
-//   -> Low cut (fixed 30 Hz, 12 dB/oct, v1.2) -> Volume
+//   -> Low cut (fixed 30 Hz, 12 dB/oct, v1.2)
+//   -> Echo (v1.3: one knob, dotted-8th synced, bass-light repeats; 0 = bypassed) -> Volume
 //   -> output ceiling (transparent below -3 dBFS) -> both outputs
 //
 // Code layout (kept separate so a step sequencer can be added later):
 //   NoteInput  - knows MIDI, knows nothing about sound.
 //   AcidVoice  - knows sound, knows nothing about MIDI. Only noteOn/noteOff/setTargets.
 //   OCKM03     - the plugin: parameters, presets.
+//
+// v1.4: closer to the classic circuit (SPEC section 13): diode-ladder filter, accent sweep
+// tied to Resonance, accent volume as a punch, Env Mod lowers the resting cutoff. Behaviour
+// taken from the circuit notes of the GPL-3 "DW-303" project; no code copied.
+//
+// v1.3: Echo, a one-knob dotted-8th delay (parameter 30).
 //
 // v1.2: Mutate (repeatable per-step octave jumps, slide-ins and rests; parameters 26-29,
 // see SPEC section 11), filter key tracking and a fixed 30 Hz low cut.
@@ -37,14 +46,16 @@
 //
 // Arp-friendly accents (v1.1): an arp often plays every note at full velocity, so
 // every note is accented. Accented notes still decay shorter than normal ones, but
-// Decay now scales them too, and the accent build-up drains with Decay and is capped,
-// so a steady stream of accents doesn't pin the filter open and the knobs keep working.
+// Decay now scales them too, and (v1.4) the accent sweep can never exceed the accent
+// voltage, so a steady stream of accents doesn't pin the filter open.
 //
 // Realtime rules: no allocation, locks or I/O in process(); pow/tan only every
 // 16 samples; the per-sample path is adds, multiplies and two rational tanh.
 
 #include "mpc_plugin.h"
 #include "dsp/biquad.h"
+#include "dsp/delay_line.h"
+#include "dsp/onepole.h"
 #include "dsp/math.h"
 #include "dsp/oscillator.h"
 #include "dsp/smoother.h"
@@ -82,6 +93,8 @@ enum ParamIndex
     kMuSld,        // chance per note of sliding in from the previous note, 0..100 %
     kMuRst,        // chance per note of being left out (a rest), 0..100 %
     kMuVar,        // which repeatable set of mutations, 1..64
+    // v1.3 (appended):
+    kEcho,         // echo amount, 0..100 %: mix and repeats rise together; 0 = off
     kNumParams
 };
 
@@ -93,23 +106,77 @@ inline float coeffForMs(float ms, float sr) { return 1.0f - std::exp(-1.0f / std
 inline float decayPerSample(float ms, float sr) { return std::exp(-1.0f / std::fmax(1.0f, ms * 0.001f * sr)); }
 
 // ---------------------------------------------------------------------------
-// Filter: 4-pole ladder, zero-delay-feedback (TPT) one-pole stages, with a
-// saturating input stage. Runs at 2x the host rate (input linearly interpolated,
-// output averaged) so resonance and saturation stay clean near the top.
+// Filter (v1.4): diode ladder, modelled on the classic acid bass circuit.
+//
+//   x -> tanh input pair -> 4 coupled capacitor stages -> x5 output stage -> 78 Hz coupling HP -> y
+//          ^                                                                                      |
+//          +---- k * (y through a 13 Hz coupling HP) <---------------------------------------------+
+//
+// Unlike a transistor ladder (where the four stages are buffered from each other), each stage loads its neighbours (a diode ladder), and the bottom stage's
+// capacitor is smaller (18/33 of the others). The two coupling high-passes sit inside the
+// resonance loop, as in the circuit: they thin the low end and soften resonance when the filter
+// is nearly closed. All six states are solved together each sample (zero-delay feedback,
+// trapezoidal), so there is no unit delay in the loop; only the input tanh is nonlinear.
+// The 6x6 system matrix is inverted at control rate. Runs at 2x the host rate.
+// The displayed cutoff is where resonance peaks: the stage conductance is fc / 1.855.
 // ---------------------------------------------------------------------------
-class LadderFilter
+class DiodeLadder
 {
 public:
-    void reset() { s1_ = s2_ = s3_ = s4_ = 0.0f; prevIn_ = 0.0f; }
+    static constexpr int N = 6;                          // v0..v3 ladder, 4 = output HP, 5 = feedback HP
+    static constexpr float kPeakRatio = 1.855f;          // resonant peak / stage conductance
+    static constexpr float kOscK = 9.03f;                // loop gain that would self-oscillate
+    static constexpr float kMaxK = 0.9f * kOscK;         // Resonance 100: rings hard, never whistles
+    static constexpr float kOutGain = 5.0f;              // top stage -> unity DC gain (before coupling)
+
+    void reset() { for (float& v : s_) v = 0.0f; prevIn_ = 0.0f; }
 
     // fc in Hz, res 0..1, osRate = 2 * host rate. Call at control rate.
     void set(float fc, float res, float osRate)
     {
         fc = clamp(fc, 20.0f, 0.45f * osRate * 0.5f);
-        const float g = std::tan(kPi * fc / osRate);
-        G_ = g / (1.0f + g);
-        k_ = 4.15f * res;                                    // top of the range sings at the edge of self-oscillation
-        comp_ = 1.0f + 0.12f * k_;                           // only a little bass make-up: high resonance thins out
+        const float g  = std::tan(kPi * (fc / kPeakRatio) / osRate);      // h * conductance (prewarped)
+        const float wo = kPi * 78.0f / osRate, wf = kPi * 13.0f / osRate;  // h * coupling corners
+        const float c0 = 33.0f / 18.0f;                                    // bottom stage: smaller capacitor
+        k_ = kMaxK * res;
+        // Level make-up: high resonance thins the passband (as in the original); recover about
+        // half of it before the tanh (more squelch) and the rest after the filter.
+        pre_  = 1.0f + 0.35f * res;
+        post_ = 1.15f * (1.0f + 1.2f * res);
+
+        // hM: the continuous system v' = M v + b u, scaled by h = T/2.
+        float m[N][N] = {};
+        m[0][0] = -2.0f * g * c0; m[0][1] = g * c0;
+        m[1][0] = g; m[1][1] = -2.0f * g; m[1][2] = g;
+        m[2][1] = g; m[2][2] = -2.0f * g; m[2][3] = g;
+        m[3][2] = g; m[3][3] = -2.0f * g;
+        const float cy[N] = {0, 0, 0, kOutGain, -1.0f, 0};                 // y = 5 v3 - h
+        const float cr[N] = {0, 0, 0, kOutGain, -1.0f, -1.0f};             // r = y - f
+        for (int j = 0; j < N; ++j) { m[4][j] = wo * cy[j]; m[5][j] = wf * cr[j]; }
+        // A = I - hM; invert by Gauss-Jordan (diagonally dominant enough: no pivoting needed).
+        float a[N][2 * N];
+        for (int i = 0; i < N; ++i)
+            for (int j = 0; j < N; ++j) { a[i][j] = (i == j ? 1.0f : 0.0f) - m[i][j]; a[i][N + j] = (i == j) ? 1.0f : 0.0f; }
+        for (int c = 0; c < N; ++c)
+        {
+            const float inv = 1.0f / a[c][c];
+            for (int j = 0; j < 2 * N; ++j) a[c][j] *= inv;
+            for (int r = 0; r < N; ++r)
+            {
+                if (r == c || a[r][c] == 0.0f) continue;
+                const float f = a[r][c];
+                for (int j = 0; j < 2 * N; ++j) a[r][j] -= f * a[c][j];
+            }
+        }
+        for (int i = 0; i < N; ++i) for (int j = 0; j < N; ++j) n_[i][j] = a[i][N + j];
+        // d = N * (h b), with h b = (g * c0) e0.
+        for (int i = 0; i < N; ++i) d_[i] = n_[i][0] * g * c0;
+        crd_ = 0.0f;
+        for (int j = 0; j < N; ++j) { crd_ += cr[j] * d_[j]; q_[j] = 0.0f; }
+        for (int j = 0; j < N; ++j) for (int i = 0; i < N; ++i) q_[j] += cr[i] * n_[i][j];   // q = cr * N
+        denom_ = 1.0f / (1.0f + k_ * crd_);
+        // Flush tiny states here (control rate) so a decaying tail never reaches denormals.
+        for (float& v : s_) if (std::fabs(v) < 1.0e-20f) v = 0.0f;
     }
 
     float process(float in)
@@ -118,35 +185,31 @@ public:
         prevIn_ = in;
         const float a = tick(mid);
         const float b = tick(in);
-        return 0.5f * (a + b);
+        return 0.5f * (a + b) * post_;
     }
 
 private:
     float tick(float x)
     {
-        const float G = G_;
-        // Linear estimate of the 4th stage output to resolve the feedback loop.
-        const float sigma = G * G * G * s1_ + G * G * s2_ + G * s3_ + s4_;
-        const float G4 = G * G * G * G;
-        // Each stage is y = G*x + (1-G)*s, so y4 = G^4*u + (1-G)*sigma with u = x - k*y4.
-        const float y4est = (G4 * x * comp_ + (1.0f - G) * sigma) / (1.0f + k_ * G4);
-        // Saturated input: this is where the squelch and the rubbery resonance come from.
-        const float u = fastTanh(x * comp_ - k_ * y4est);
-        const float y1 = stage(u, s1_, G);
-        const float y2 = stage(y1, s2_, G);
-        const float y3 = stage(y2, s3_, G);
-        return stage(y3, s4_, G);
-    }
-    static float stage(float x, float& s, float G)
-    {
-        const float v = (x - s) * G;
-        const float y = v + s;
-        s = y + v;
-        return y;
+        x *= pre_;
+        // Linear estimate of the feedback signal, then the saturated input with that feedback.
+        float qs = 0.0f;
+        for (int j = 0; j < N; ++j) qs += q_[j] * s_[j];
+        const float rEst = (qs + crd_ * x) * denom_;
+        const float u = fastTanh(x - k_ * rEst);
+        float v[N];
+        for (int i = 0; i < N; ++i)
+        {
+            float p = d_[i] * u;
+            for (int j = 0; j < N; ++j) p += n_[i][j] * s_[j];
+            v[i] = p;
+        }
+        for (int i = 0; i < N; ++i) s_[i] = 2.0f * v[i] - s_[i];
+        return kOutGain * v[3] - v[4];
     }
 
-    float s1_ = 0.0f, s2_ = 0.0f, s3_ = 0.0f, s4_ = 0.0f, prevIn_ = 0.0f;
-    float G_ = 0.1f, k_ = 0.0f, comp_ = 1.0f;
+    float s_[N] = {}, n_[N][N] = {}, d_[N] = {}, q_[N] = {};
+    float k_ = 0.0f, crd_ = 0.0f, denom_ = 1.0f, pre_ = 1.0f, post_ = 1.0f, prevIn_ = 0.0f;
 };
 
 // ---------------------------------------------------------------------------
@@ -169,7 +232,8 @@ public:
         attackCoef_ = coeffForMs(1.0f, sr_);
         releaseCoef_ = coeffForMs(8.0f, sr_);
         ampDecay_ = decayPerSample(3000.0f, sr_);
-        accSmoothCoef_ = coeffForMs(8.0f, sr_);
+        capDrain_ = decayPerSample(100.0f, sr_);                 // accent sweep capacitor drains over ~100 ms
+        capDrain16_ = std::pow(capDrain_, 16.0f);
         rampCoef_ = coeffForMs(10.0f, sr_);
         reset();
     }
@@ -178,7 +242,7 @@ public:
     {
         filter_.reset();
         gate_ = false; gateLevel_ = 0.0f; amp_ = 0.0f; fenv_ = 0.0f;
-        accum_ = accumS_ = 0.0f; accented_ = false;
+        sweepCap_ = 0.0f; accented_ = false;
         pitch_ = pitchTarget_ = 36.0f;
         ctrl_ = 0;
         first_ = true;
@@ -196,8 +260,6 @@ public:
         const float dms = decayMs(t.decay);
         decayAccent_ = decayPerSample(std::fmin(dms, 0.3f * dms + 120.0f), sr_);
         slideCoef_ = coeffForMs(slideMs(t.slide), sr_);
-        // Accent build-up drains with a time tied to Decay (about 70 ms .. 0.7 s).
-        accumDecay_ = decayPerSample(0.25f * dms + 60.0f, sr_);
         if (first_) { cut_ = t.cutoff; res_ = t.reso; env_ = t.envMod; acc_ = t.accent; drv_ = t.drive; first_ = false; }
     }
 
@@ -206,7 +268,6 @@ public:
     {
         pitchTarget_ = (float)pitch;
         accented_ = accent;
-        if (accent) accum_ = std::fmin(accum_ + 1.0f, kAccumMax); // consecutive accents build up
         if (slide && gate_) return;                              // legato: glide, keep envelopes
         pitch_ = pitchTarget_;                                   // fresh note: jump, retrigger
         gate_ = true;
@@ -222,7 +283,6 @@ public:
         if (gate_) { noteOn(pitch, accent, true); return; }      // still held: a normal slide
         pitchTarget_ = (float)pitch;
         accented_ = accent;
-        if (accent) accum_ = std::fmin(accum_ + 1.0f, kAccumMax);
         gate_ = true;
         gateLevel_ = 1.0f;                                       // amp re-opens; fenv_ keeps going
     }
@@ -234,10 +294,9 @@ public:
     {
         if (!gate_ && amp_ == 0.0f)
         {
-            // Silent: skip the DSP, but let the accent accumulator keep discharging.
-            accum_ *= std::pow(accumDecay_, (float)n);
-            if (accum_ < 1.0e-4f) accum_ = 0.0f;
-            accumS_ = accum_;
+            // Silent: skip the DSP, but let the accent sweep capacitor keep draining.
+            sweepCap_ *= std::pow(capDrain_, (float)n);
+            if (sweepCap_ < 1.0e-4f) sweepCap_ = 0.0f;
             return;
         }
         const float fdec = accented_ ? decayAccent_ : decayNormal_;
@@ -253,25 +312,35 @@ public:
                 drv_ += r * (t_.drive - drv_);
 
                 osc_.setFrequency(midiToHz(pitch_ + t_.tuneSemis));
-                const float accAmt = accented_ ? acc_ : 0.0f;
-                const float octaves = env_ * kEnvOctaves * fenv_
-                                    + accAmt * (1.2f * fenv_ + 1.0f * accumS_);
+                // Accent voltage: follows the envelope while the note is accented (v1.4).
+                const float accV = accented_ ? acc_ * fenv_ : 0.0f;
+                // Accent sweep: the voltage charges a capacitor through a diode (charge only;
+                // 32 ms at Resonance 0 .. 50 ms at 100), which drains over about 100 ms. Resonance
+                // blends from the direct voltage (a quick blip) to the capacitor (a late swell that
+                // builds over a run of accents). The capacitor can never exceed the direct voltage,
+                // so a stream of accents (an arp) cannot pin the filter open.
+                if (accV > sweepCap_) sweepCap_ += (1.0f - std::exp(-16.0f / ((0.032f + 0.018f * res_) * sr_))) * (accV - sweepCap_);
+                else                  sweepCap_ *= capDrain16_;
+                const float sweep = accV + res_ * (sweepCap_ - accV);
+                // Env Mod (v1.4): the envelope rests below the cutoff reference, so more Env Mod
+                // also lowers the resting cutoff (down 30 % of the sweep, up 70 %).
+                const float octaves = env_ * kEnvOctaves * (fenv_ - kEnvRest) + kAccentOctaves * sweep;
                 // Key tracking: the cutoff follows half the pitch distance from C1 (MIDI 36), so
                 // higher and octave-jumped notes stay as bright as the rest.
                 const float keyOct = kKeyTrack * (pitch_ + t_.tuneSemis - 36.0f) * (1.0f / 12.0f);
-                filter_.set(cutoffHz(cut_) * std::pow(2.0f, clamp(octaves, 0.0f, 9.0f) + clamp(keyOct, -3.0f, 4.0f)), res_, osRate);
+                filter_.set(cutoffHz(cut_) * std::pow(2.0f, clamp(octaves, -3.0f, 9.0f) + clamp(keyOct, -3.0f, 4.0f)), res_, osRate);
                 // Progressive drive: gain into the clipper grows with the square of the knob,
                 // so the whole travel is usable (it used to be fully saturated by 25 %).
                 drivePre_ = 1.0f + 11.0f * drv_ * drv_;
                 driveMix_ = clamp(drv_ * 2.0f, 0.0f, 1.0f);
                 driveNorm_ = 0.5f / fastTanh(0.5f * drivePre_);
-                ampBoost_ = 1.0f + 1.6f * (accented_ ? acc_ : 0.0f);   // accent: up to +8 dB
+                // Accent punch (v1.4): extra level above a threshold, dying away with the accent
+                // voltage, so it is a hit at the start (up to +8 dB), not a louder note.
+                ampBoost_ = 1.0f + 1.6f * std::fmax(accV - 0.1f, 0.0f) * (1.0f / 0.9f);
             }
 
             pitch_ += slideCoef_ * (pitchTarget_ - pitch_);      // exponential glide in semitones
             fenv_ *= fdec;
-            accum_ *= accumDecay_;
-            accumS_ += accSmoothCoef_ * (accum_ - accumS_);
 
             float target;
             if (gate_) { gateLevel_ *= ampDecay_; target = gateLevel_ * ampBoost_; amp_ += attackCoef_ * (target - amp_); }
@@ -293,20 +362,80 @@ public:
 
 private:
     static constexpr float kEnvOctaves = 5.5f;   // Env Mod at 100 %: the envelope sweeps 5.5 octaves
-    static constexpr float kAccumMax = 1.6f;     // cap on the accent build-up (in accent steps)
+    static constexpr float kEnvRest = 0.3f;      // envelope rest level below the cutoff reference (v1.4)
+    static constexpr float kAccentOctaves = 3.0f; // accent sweep at Accent 100 (v1.4)
     static constexpr float kKeyTrack = 0.5f;     // filter key tracking: 0.5 octave per octave played
     PolyBlepOsc osc_;
-    LadderFilter filter_;
+    DiodeLadder filter_;
     VoiceTargets t_;
     float sr_ = 44100.0f;
     bool gate_ = false, accented_ = false, first_ = true;
-    float gateLevel_ = 0.0f, amp_ = 0.0f, fenv_ = 0.0f, accum_ = 0.0f, accumS_ = 0.0f;
+    float gateLevel_ = 0.0f, amp_ = 0.0f, fenv_ = 0.0f, sweepCap_ = 0.0f;
     float pitch_ = 36.0f, pitchTarget_ = 36.0f;
-    float attackCoef_ = 1.0f, releaseCoef_ = 1.0f, ampDecay_ = 1.0f, accSmoothCoef_ = 1.0f, rampCoef_ = 1.0f;
-    float decayNormal_ = 0.999f, decayAccent_ = 0.999f, slideCoef_ = 1.0f, accumDecay_ = 0.999f;
+    float attackCoef_ = 1.0f, releaseCoef_ = 1.0f, ampDecay_ = 1.0f, rampCoef_ = 1.0f;
+    float decayNormal_ = 0.999f, decayAccent_ = 0.999f, slideCoef_ = 1.0f, capDrain_ = 0.999f, capDrain16_ = 0.99f;
     float cut_ = 0.3f, res_ = 0.6f, env_ = 0.5f, acc_ = 0.5f, drv_ = 0.0f;
     float drivePre_ = 1.0f, driveMix_ = 0.0f, driveNorm_ = 1.0f, ampBoost_ = 1.0f, dcFix_ = 0.0f;
     int ctrl_ = 0;
+};
+
+// ---------------------------------------------------------------------------
+// Echo (v1.3): one knob. A dotted-8th delay synced to the MPC tempo. The knob raises the
+// wet level (up to 45 %) and the repeats (feedback 15..65 %) together. Repeats are
+// band-limited (about 250 Hz .. 3.5 kHz) so the bass stays solid and the echoes sit
+// behind it. At 0, and once the tail has died away, it is bypassed completely.
+// ---------------------------------------------------------------------------
+class Echo
+{
+public:
+    void prepare(double sampleRate)
+    {
+        sr_ = (float)sampleRate;
+        line_.prepare((int)(sampleRate * kMaxSeconds) + 4);    // allocation: prepare() only
+        hp_.setCutoff(250.0f, sampleRate);
+        lp_.setCutoff(3500.0f, sampleRate);
+        smoothCoef_ = 1.0f - std::exp(-1.0f / (0.05f * sr_)); // 50 ms glide for mix and tempo changes
+        reset();
+    }
+
+    void reset() { line_.reset(); hp_.reset(); lp_.reset(); mix_ = fb_ = 0.0f; delay_ = target_; tail_ = 0; active_ = false; }
+
+    // amount 0..1, bpm from the MPC (120 if it gives none). Call once per block.
+    void setAmount(float amount, double bpm)
+    {
+        amount_ = amount;
+        const double b = bpm < 40.0 ? 40.0 : (bpm > 300.0 ? 300.0 : bpm);
+        target_ = (float)(0.75 * 60.0 / b * sr_);              // dotted 8th = 3/4 of a beat
+        if (!active_ && amount > 0.0f) { active_ = true; delay_ = target_; }
+    }
+
+    float process(float x)
+    {
+        if (!active_) return x;
+        const float mixT = 0.45f * amount_, fbT = amount_ > 0.0f ? 0.15f + 0.5f * amount_ : 0.0f;
+        mix_ += smoothCoef_ * (mixT - mix_);
+        fb_ += smoothCoef_ * (fbT - fb_);
+        delay_ += smoothCoef_ * (target_ - delay_);
+        const float wet = line_.readLinear(delay_);
+        // Everything entering the line is band-limited, so even the first repeat is bass-light,
+        // and each later repeat a little thinner and darker.
+        float in = lp_.process(hp_.process(x + wet * fb_));
+        if (std::fabs(in) < 1.0e-15f) in = 0.0f;               // no denormal tails
+        line_.write(in);
+        // Bypass again once the knob is at 0 and the tail has gone quiet for a whole delay time.
+        if (amount_ == 0.0f && mix_ < 1.0e-4f && std::fabs(wet) < 1.0e-6f) { if (++tail_ > (int)target_) reset(); }
+        else tail_ = 0;
+        return x + mix_ * wet;
+    }
+
+private:
+    static constexpr double kMaxSeconds = 1.2;                 // dotted 8th at 40 BPM is 1.125 s
+    DelayLine line_;
+    OnePoleHP hp_;
+    OnePoleLP lp_;
+    float sr_ = 44100.0f, amount_ = 0.0f, mix_ = 0.0f, fb_ = 0.0f, delay_ = 1.0f, target_ = 1.0f, smoothCoef_ = 1.0f;
+    int tail_ = 0;
+    bool active_ = false;
 };
 
 // ---------------------------------------------------------------------------
@@ -452,6 +581,8 @@ public:
         addParam(floatParam("mu_sld", "Add Slide", 0.0f, 100.0f, 0.0f, "%", 0));
         addParam(floatParam("mu_rst", "Add Rest", 0.0f, 100.0f, 0.0f, "%", 0));
         addParam(intParam("mu_var", "Variation", 1, 64, 1));
+        // v1.3 Echo (appended).
+        addParam(floatParam("echo", "Echo", 0.0f, 100.0f, 0.0f, "%", 0));
         if (numParams() != kNumParams) mpc::log("OCKM-03: parameter count mismatch (%d vs %d)", numParams(), (int)kNumParams);
 
         // Factory presets: classic-panel settings only (retired parameters stay at defaults).
@@ -463,13 +594,13 @@ public:
             addProgram(name, std::move(v));
         };
         program("Init Acid", {});
-        program("Classic Squelch", {{kCutoff, 43}, {kReso, 80}, {kEnvMod, 60}, {kDecay, 55}, {kAccent, 60}});
-        program("Rubber Sub", {{kWave, 1}, {kCutoff, 29}, {kReso, 40}, {kEnvMod, 30}, {kDecay, 68}, {kSlide, 50},
-                               {kVolume, -8}});
-        program("Acid Scream", {{kCutoff, 47}, {kReso, 90}, {kEnvMod, 70}, {kDecay, 48}, {kAccent, 80}, {kDrive, 35},
+        program("Classic Squelch", {{kCutoff, 52}, {kReso, 80}, {kEnvMod, 60}, {kDecay, 55}, {kAccent, 60}});
+        program("Rubber Sub", {{kWave, 1}, {kCutoff, 36}, {kReso, 40}, {kEnvMod, 30}, {kDecay, 68}, {kSlide, 50},
+                               {kVolume, -7}});
+        program("Acid Scream", {{kCutoff, 56}, {kReso, 90}, {kEnvMod, 70}, {kDecay, 48}, {kAccent, 80}, {kDrive, 35},
                                 {kVolume, -5}});
-        program("Mutant Squelch", {{kCutoff, 40}, {kReso, 82}, {kEnvMod, 62}, {kDecay, 50}, {kAccent, 65},
-                                   {kMuOct, 25}, {kMuSld, 30}, {kMuRst, 20}, {kMuVar, 7}});
+        program("Mutant Squelch", {{kCutoff, 49}, {kReso, 82}, {kEnvMod, 62}, {kDecay, 50}, {kAccent, 65},
+                                   {kMuOct, 25}, {kMuSld, 30}, {kMuRst, 20}, {kMuVar, 7}, {kEcho, 30}});
     }
 
     void prepare(double sampleRate, int /*maxBlockSize*/) override
@@ -478,6 +609,7 @@ public:
         sr_ = sampleRate;
         lowCut_.setCoeffs(BiquadCoeffs::highpass(sampleRate, 30.0f));   // fixed 30 Hz, 12 dB/oct
         lowCut_.reset();
+        echo_.prepare(sampleRate);
         volume_.setTime(10.0f, sampleRate);
         volume_.snap(dbToGain(get(kVolume)));
     }
@@ -487,6 +619,7 @@ public:
         voice_.reset();
         notes_.reset();
         lowCut_.reset();
+        echo_.reset();
         noteCounter_ = 0; wasPlaying_ = false; sinceNote_ = 1.0e9;
         volume_.snap(dbToGain(get(kVolume)));
     }
@@ -506,6 +639,7 @@ public:
         wasPlaying_ = onGrid;
         const double sr = ctx.sampleRate > 0 ? ctx.sampleRate : sr_;
         const double bpm = tr.tempoValid && tr.bpm > 1.0 ? tr.bpm : 120.0;
+        echo_.setAmount(getNormalised(kEcho), bpm);
         const double beatsPerBar = tr.timeSigDenominator > 0 ? 4.0 * tr.timeSigNumerator / tr.timeSigDenominator : 4.0;
         const int    stepsPerBar = mpc::clamp((int)std::lround(beatsPerBar * 4.0), 1, 64);
         // Slide-in only within one bar of the previous note (nothing to slide from after a long gap).
@@ -549,13 +683,13 @@ public:
         for (int i = 0; i < ctx.numFrames; ++i)
         {
             if (L[i] != 0.0f) silentIn = false;
-            const float y = lowCut_.process(L[i]);
+            const float y = echo_.process(lowCut_.process(L[i]));
             outPeak = std::fmax(outPeak, std::fabs(y));
             L[i] = ceiling(y * volume_.process());
             if (R) R[i] = L[i];
         }
-        // The voice has stopped and the low cut's tail is below -140 dB: clear it, so it never
-        // decays into denormals.
+        // The voice and the echo have stopped and the low cut's tail is below -140 dB: clear it,
+        // so it never decays into denormals.
         if (silentIn && outPeak < 1.0e-7f) lowCut_.reset();
     }
 
@@ -608,7 +742,7 @@ private:
         info.name         = "OCKM-03";
         info.vendor       = "OCKM";     // must match plugin.json "manufacturer"
         info.uniqueId     = MPC_FOURCC('O', '5', 'u', 'Q');   // must match plugin.json "uid"
-        info.version      = 1200;       // 1.2.0.0
+        info.version      = 1400;       // 1.4.0.0
         info.isInstrument = true;
         info.numInputs    = 0;
         info.numOutputs   = 2;
@@ -617,6 +751,7 @@ private:
 
     AcidVoice voice_;
     NoteInput notes_;
+    Echo echo_;
     Biquad lowCut_;                // fixed 30 Hz high-pass: trims sub rumble so the kick has room
     Smoother volume_;
     double sr_ = 44100.0;

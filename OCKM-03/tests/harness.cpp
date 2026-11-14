@@ -9,11 +9,12 @@ struct Ev { int frame; int note; int vel; bool on; };
 struct Out { std::vector<float> L; };
 // When true, render() gives the plugin a running MPC transport (125 BPM, 4/4, from bar 1).
 static bool gTransport = false;
+static double gBpm = 125.0;
 static void fillTransport(mpc::ProcessContext& c, int pos)
 {
     if (!gTransport) return;
-    auto& t = c.transport; t.valid = t.playing = t.ppqValid = t.tempoValid = true; t.bpm = 125.0;
-    t.ppqPos = pos * 125.0 / 60.0 / 44100.0; t.barStartPpq = std::floor(t.ppqPos / 4.0) * 4.0;
+    auto& t = c.transport; t.valid = t.playing = t.ppqValid = t.tempoValid = true; t.bpm = gBpm;
+    t.ppqPos = pos * gBpm / 60.0 / 44100.0; t.barStartPpq = std::floor(t.ppqPos / 4.0) * 4.0;
     t.timeSigNumerator = 4; t.timeSigDenominator = 4;
 }
 // Goertzel magnitude of frequency f over x[a..b).
@@ -61,10 +62,10 @@ int main(int argc, char** argv)
 
     // 1. Slide: overlapping notes must not retrigger the envelope.
     {
-        OCKM03 a; a.set(kReso, 0); a.set(kEnvMod, 80); a.set(kDecay, 20); a.set(kSlide, 0);
+        OCKM03 a; a.set(kReso, 0); a.set(kEnvMod, 80); a.set(kDecay, 20); a.set(kSlide, 0); a.set(kCutoff, 55);
         // A: separate notes (retrigger). B: overlapping (slide).
         auto sep = render(a, {{0, 36, 80, true}, {step - 200, 36, 0, false}, {step, 48, 80, true}, {2 * step, 48, 0, false}}, 3 * step);
-        OCKM03 b; b.set(kReso, 0); b.set(kEnvMod, 80); b.set(kDecay, 20); b.set(kSlide, 0);
+        OCKM03 b; b.set(kReso, 0); b.set(kEnvMod, 80); b.set(kDecay, 20); b.set(kSlide, 0); b.set(kCutoff, 55);
         auto leg = render(b, {{0, 36, 80, true}, {step, 48, 80, true}, {step + 100, 36, 0, false}, {2 * step, 48, 0, false}}, 3 * step);
         // Brightness (HF energy / RMS) once the glide has settled: a retrigger restarts the filter env.
         auto bright = [](const std::vector<float>& x, int a, int b) { double h = 0, e = 0; for (int i = a; i < b; ++i) { float d = x[i] - x[i - 1]; h += d * d; e += x[i] * x[i]; } return (float)std::sqrt(h / e); };
@@ -115,7 +116,8 @@ int main(int argc, char** argv)
         bool hidden = true; for (int i = kSquelch; i <= kGrRes; ++i) hidden = hidden && !a.param(i).automatable;
         bool live = true;   for (int i = 0; i < kSquelch; ++i) live = live && a.param(i).automatable;
         bool mut = true; for (int i = kMuOct; i <= kMuVar; ++i) mut = mut && a.param(i).automatable;
-        check(hidden && live && mut && a.numParams() == 30, "30 parameters: the 11 classic and 4 Mutate are automatable, 15 retired are not");
+        check(hidden && live && mut && a.param(kEcho).automatable && a.numParams() == 31,
+              "31 parameters: the 11 classic, 4 Mutate and Echo are automatable, 15 retired are not");
     }
     // 3b. Arp: every note at full velocity (all accented). The classic knobs must still work.
     {
@@ -238,6 +240,119 @@ int main(int argc, char** argv)
           gTransport = false;
           printf("      worst preset peak with Mutate at max: %.2f dBFS\n", 20 * std::log10(worst));
           check(worst < 1.0f, "every preset with Mutate at maximum peaks below 0 dBFS"); }
+    }
+    // 6. v1.3 Echo.
+    {
+        const std::vector<Ev> blip = {{0, 48, 80, true}, {900, 48, 0, false}};     // one 20 ms note
+        auto envPeakAt = [](const std::vector<float>& x, int a, int b) { int at = a; float m = 0; for (int i = a; i < b; ++i) if (std::fabs(x[i]) > m) { m = std::fabs(x[i]); at = i; } return at; };
+        gTransport = true;
+        // 6a. Echo 0: nothing after the note has released.
+        { OCKM03 p; auto x = render(p, blip, sr); check(peak(x, 8000, sr) < 1e-6f, "Echo 0: no repeats, silence after the note"); }
+        // 6b. Dotted-8th timing, following the MPC tempo.
+        for (double bpm : {125.0, 100.0})
+        { gBpm = bpm; OCKM03 p; p.set(kEcho, 50); auto x = render(p, blip, sr);
+          const int want = (int)(0.75 * 60.0 / bpm * 44100.0), got = envPeakAt(x, 4000, want + 6000);
+          printf("      Echo at %.0f BPM: first repeat at %d samples (dotted 8th = %d)\n", bpm, got, want);
+          check(std::abs(got - want) < 1200 && peak(x, want - 200, want + 2000) > 0.02f, bpm == 125.0 ? "Echo: first repeat lands a dotted 8th later (125 BPM)"
+                                                                                                        : "Echo: follows the MPC tempo (100 BPM)"); }
+        gBpm = 125.0;
+        // 6c. Repeats die away, even at maximum.
+        { OCKM03 p; p.set(kEcho, 100); auto x = render(p, blip, 6 * sr);
+          float early = peak(x, 10000, 30000), late = peak(x, 5 * sr, 6 * sr);
+          printf("      Echo 100: early repeat %.3f, after 5 s %.6f\n", early, late);
+          check(late < early * 0.001f, "Echo at maximum: repeats fall below -60 dB within 5 s"); }
+        // 6d. Turning Echo off and on again never replays old echoes.
+        { OCKM03 p; p.internalSetSampleRate(44100); p.internalSetBlockSize(128); p.internalResume();
+          std::vector<float> out; std::vector<float> L(128), R(128);
+          for (int pos = 0; pos < 4 * sr; pos += 128)
+          {
+              p.set(kEcho, pos < sr / 2 ? 100.f : (pos < 3 * sr ? 0.f : 60.f));
+              std::vector<mpc::MidiEvent> mev; if (pos == 0) { mev.push_back(mpc::MidiEvent::noteOn(0, 48, 80, 0)); }
+              if (pos == 1024) mev.push_back(mpc::MidiEvent::noteOff(0, 48, 0));
+              float* outs[2] = {L.data(), R.data()}; std::fill(L.begin(), L.end(), 0.f); std::fill(R.begin(), R.end(), 0.f);
+              mpc::ProcessContext c; c.outputs = outs; c.numOutputs = 2; c.numFrames = 128; c.sampleRate = 44100;
+              c.midi = mev.data(); c.numMidiEvents = (int)mev.size(); fillTransport(c, pos); p.process(c);
+              out.insert(out.end(), L.begin(), L.end());
+          }
+          check(peak(out, 3 * sr, 4 * sr) < 1e-6f, "Echo turned off then on again: no stale echoes come back"); }
+        // 6e. Bass-light repeats: a low note's echo keeps far less of its low end than the dry note.
+        { OCKM03 p; p.set(kEcho, 60); p.set(kCutoff, 100); p.set(kEnvMod, 0); p.set(kReso, 0);
+          const int d = (int)(0.75 * 60.0 / 125.0 * 44100.0);
+          auto x = render(p, {{0, 24, 80, true}, {6000, 24, 0, false}}, 2 * d);
+          float dryLo = tone(x, 1000, 5000, 32.7), dryHi = tone(x, 1000, 5000, 32.7 * 16);
+          float wetLo = tone(x, d + 1000, d + 5000, 32.7), wetHi = tone(x, d + 1000, d + 5000, 32.7 * 16);
+          printf("      low/high harmonic ratio: dry %.2f, first repeat %.2f\n", dryLo / dryHi, wetLo / wetHi);
+          check(wetLo / wetHi < 0.5f * dryLo / dryHi, "Echo repeats are bass-light (the bass stays dry and solid)"); }
+        // 6f. Every preset with Echo at maximum still never clips.
+        { float worst = 0;
+          for (int prog = 0; prog < 5; ++prog) { OCKM03 p; p.setProgram(prog); p.set(kEcho, 100); auto x = render(p, pattern, 64 * step); worst = std::fmax(worst, peak(x, 0, (int)x.size())); }
+          printf("      worst preset peak with Echo at max: %.2f dBFS\n", 20 * std::log10(worst));
+          check(worst < 1.0f, "every preset with Echo at maximum peaks below 0 dBFS"); }
+        gTransport = false;
+    }
+    // 3e. v1.4 diode-ladder filter, on its own (2x oversampled at 44.1 kHz, as in the voice).
+    {
+        const float os = 88200.0f;
+        auto runF = [&](DiodeLadder& f, float fc, float res, auto input, int n, std::vector<float>& y)
+        { y.resize(n); for (int i = 0; i < n; ++i) { if ((i & 15) == 0) f.set(fc, res, os); y[i] = f.process(input(i)); } };
+        bool decays = true; std::vector<float> y;
+        for (float fc : {100.f, 300.f, 1000.f, 3000.f, 8000.f})
+        {
+            DiodeLadder f; f.reset(); runF(f, fc, 1.0f, [](int i) { return i == 0 ? 0.5f : 0.0f; }, 2 * sr, y);
+            float tail = peak(y, sr + sr / 2, 2 * sr);
+            if (!(tail < 1e-6f)) { decays = false; printf("      fc %.0f: tail %.3g\n", fc, tail); }
+        }
+        check(decays, "filter at maximum Resonance: an impulse dies away (no self-oscillation), 100 Hz - 8 kHz");
+        bool peaks = true;
+        for (float fc : {1000.f, 3000.f})
+        {
+            int best = 0; float bestA = 0;
+            for (int st = -12; st <= 12; ++st)
+            {
+                const double f0 = fc * std::pow(2.0, st / 12.0);
+                DiodeLadder f; f.reset();
+                runF(f, fc, 0.9f, [&](int i) { return 0.01f * (float)std::sin(2 * 3.14159265358979 * f0 * i / 44100.0); }, sr / 2, y);
+                const float a = rms(y, sr / 4, sr / 2);
+                if (a > bestA) { bestA = a; best = st; }
+            }
+            printf("      Resonance 90, cutoff %.0f Hz: response peaks %+d semitones away\n", fc, best);
+            peaks = peaks && std::abs(best) <= 4;
+        }
+        check(peaks, "the resonant peak sits within a third of an octave of the displayed cutoff");
+        DiodeLadder f; f.reset();
+        runF(f, 5000.f, 1.0f, [](int i) { return ((i / 37) & 1) ? 100.0f : -100.0f; }, sr, y);
+        bool finite = true; for (float v : y) finite = finite && std::isfinite(v) && std::fabs(v) < 20.0f;
+        check(finite, "filter stays finite and bounded with +-100 input at maximum Resonance");
+        auto level = [&](double f0) { DiodeLadder g; g.reset();
+            runF(g, 2000.f, 0.0f, [&](int i) { return 0.01f * (float)std::sin(2 * 3.14159265358979 * f0 * i / 44100.0); }, sr, y);
+            return rms(y, sr / 2, sr); };
+        const float l40 = level(40), l200 = level(200);
+        printf("      40 Hz / 200 Hz through the filter: %.2f\n", l40 / l200);
+        check(l40 / l200 < 0.7f, "the in-loop coupling stage thins the deep bass (40 Hz vs 200 Hz)");
+    }
+    // 3f. v1.4 accent behaviour.
+    {
+        auto bright = [](const std::vector<float>& x, int a, int b) { double h = 0, e = 0; for (int i = a + 1; i < b; ++i) { float d = x[i] - x[i - 1]; h += d * d; e += x[i] * x[i]; } return e > 0 ? (float)std::sqrt(h / e) : 0.f; };
+        // Accent sweep: with Env Mod 0 only the accent moves the filter. High Resonance swells later.
+        auto peakTime = [&](float reso) { OCKM03 p; p.set(kEnvMod, 0); p.set(kAccent, 100); p.set(kCutoff, 45); p.set(kDecay, 70); p.set(kReso, reso);
+            auto x = render(p, {{0, 36, 127, true}, {sr / 2, 36, 0, false}}, sr / 2);
+            int bestT = 0; float best = 0; for (int t = 0; t + 441 < sr / 2; t += 441) { float b = bright(x, t, t + 441); if (b > best) { best = b; bestT = t; } }
+            return bestT * 1000 / sr; };
+        const int t10 = peakTime(10), t90 = peakTime(90);
+        printf("      accented note brightest at %d ms (Resonance 10) and %d ms (Resonance 90)\n", t10, t90);
+        check(t90 > t10 + 10, "accent sweep: at high Resonance the accent swells later (the 'wow')");
+        // Accent punch: the extra level dies away with the accent instead of lasting the whole note.
+        auto lv = [&](int vel, int a, int b) { OCKM03 p; p.set(kAccent, 100); p.set(kEnvMod, 0); p.set(kReso, 0); p.set(kCutoff, 60);
+            auto x = render(p, {{0, 36, vel, true}, {sr / 2, 36, 0, false}}, sr / 2); return rms(x, a, b); };
+        const float rStart = lv(127, 300, 1300) / lv(80, 300, 1300), rLate = lv(127, 11000, 12000) / lv(80, 11000, 12000);
+        printf("      accented / normal level: %.2f at the start, %.2f at 250 ms\n", rStart, rLate);
+        check(rLate < rStart * 0.75f && rStart > 1.5f, "accent punch: a hit at the start that dies away, not a louder note");
+        // Env Mod: more Env Mod also lowers the resting cutoff.
+        auto restB = [&](float env) { OCKM03 p; p.set(kEnvMod, env); p.set(kDecay, 0); p.set(kReso, 0); p.set(kCutoff, 50);
+            auto x = render(p, {{0, 36, 80, true}, {sr, 36, 0, false}}, sr); return bright(x, sr * 6 / 10, sr * 9 / 10); };
+        const float b0 = restB(0), b100 = restB(100);
+        printf("      late brightness of a held note: Env Mod 0 %.4f, Env Mod 100 %.4f\n", b0, b100);
+        check(b100 < b0 * 0.9f, "Env Mod also lowers the resting cutoff (the sweep goes below the knob too)");
     }
     // 4. Demo: each preset playing the pattern, Cutoff swept up and back in bars 3-4.
     {
