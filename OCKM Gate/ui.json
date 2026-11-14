@@ -30,8 +30,7 @@
           "overlay": "menu"
         },
         {
-          "param": "Tap Rec",
-          "widget": "switch"
+          "widget": "empty"
         },
         {
           "param": "Depth",
@@ -46,8 +45,7 @@
           "widget": "knob"
         },
         {
-          "param": "TAP",
-          "widget": "switch"
+          "widget": "empty"
         },
         {
           "param": "Mix",
@@ -62,8 +60,7 @@
           "widget": "knob"
         },
         {
-          "param": "Run Stopped",
-          "widget": "switch"
+          "widget": "empty"
         },
         {
           "param": "Width",
@@ -75,7 +72,8 @@
           "polarity": "bipolar"
         },
         {
-          "widget": "empty"
+          "param": "Run Stopped",
+          "widget": "switch"
         },
         {
           "param": "Output",

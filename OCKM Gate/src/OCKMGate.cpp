@@ -7,7 +7,8 @@
 //
 //   input L/R
 //     -> StepClock: position in the bar (MPC song position while playing, own clock when
-//        stopped), Rate, Swing, Steps (pattern length, restarts every bar)
+//        stopped), Rate, Swing, Steps. The pattern restarts every N bars, N being the fewest
+//        whole bars that hold it (16 x 1/16 = 1 bar, 16 x 1/8 = 2 bars, 16 x 1/4 = 4 bars)
 //     -> PulseEnvelope: every On step TRIGGERS an envelope (Gate / Pump / Smooth / Ping-Pong)
 //        shaped by Attack, Length, Release, Curve and scaled by the step's Level.
 //        Triggered envelopes run on across Off steps, so a pump keeps recovering through them.
@@ -15,7 +16,8 @@
 //        triggers left / right; Width sets how far)
 //     -> 0.3 ms de-click smoothing -> Output level -> L/R
 //
-// Tap Rec: while armed and the MPC is playing, each press of TAP switches on the step nearest
+// Tap Rec (hidden from the screen since the hardware test: taps landed off the beat; the
+// parameters stay because ids and order are permanent): while armed and the MPC is playing, each press of TAP switches on the step nearest
 // to "now". The press is only flagged on the UI thread; process() applies it at the exact
 // song position and tells the host which step parameters changed.
 //
@@ -42,7 +44,7 @@ enum ParamIndex
     kMode,         // Gate / Pump / Smooth / PingPong
     kDepth,        // how far the gate closes, %
     kMix,          // dry/wet, %
-    kRate,         // step length: 1/8, 1/8T, 1/16, 1/16T, 1/32
+    kRate,         // step length: 1/8, 1/8T, 1/16, 1/16T, 1/32, 1/4 (1/4 appended later: saved values keep their rate)
     kAttack,       // opening (or ducking) time, ms
     kLength,       // gate open time / swell peak, % of a step
     kRelease,      // closing / recovery time, % of a step (up to 4 steps)
@@ -62,14 +64,15 @@ enum Mode { kGate = 0, kPump, kSmooth, kPingPong };
 
 constexpr int kMaxSteps = 16;
 constexpr int kCurveTable = 64;
-const float kRateBeats[5] = {0.5f, 1.0f / 3.0f, 0.25f, 1.0f / 6.0f, 0.125f};
+constexpr int kNumRates = 6;
+const float kRateBeats[kNumRates] = {0.5f, 1.0f / 3.0f, 0.25f, 1.0f / 6.0f, 0.125f, 1.0f};
 
 // ---------------------------------------------------------------------------
 // StepClock: where are we in the bar, which step, how far into it.
 // ---------------------------------------------------------------------------
 struct StepPos
 {
-    int   stepInBar = 0;   // step counted from the bar start (before wrapping to Steps)
+    int   stepInBar = 0;   // step counted from the loop start (before wrapping to Steps)
     float phase = 0.0f;    // 0..1 inside the current step
 };
 
@@ -195,7 +198,7 @@ public:
         addParam(choiceParam("mode", "Mode", {"Gate", "Pump", "Smooth", "PingPong"}, 0));
         addParam(floatParam("depth", "Depth", 0.0f, 100.0f, 100.0f, "%", 0));
         addParam(floatParam("mix", "Mix", 0.0f, 100.0f, 100.0f, "%", 0));
-        addParam(choiceParam("rate", "Rate", {"1/8", "1/8T", "1/16", "1/16T", "1/32"}, 2));
+        addParam(choiceParam("rate", "Rate", {"1/8", "1/8T", "1/16", "1/16T", "1/32", "1/4"}, 2));
         addParam(logParam("attack", "Attack", 0.5f, 50.0f, 2.0f, "ms", 1));
         addParam(floatParam("length", "Length", 5.0f, 100.0f, 50.0f, "%", 0));
         addParam(floatParam("release", "Release", 1.0f, 400.0f, 15.0f, "%", 0, 0.5f));
@@ -272,9 +275,11 @@ public:
         const double bpm = (tr.tempoValid && tr.bpm > 1.0) ? tr.bpm : 120.0;
         const double barBeats = barLength(tr);
         const int rate = getInt(kRate);
-        const double stepBeats = kRateBeats[clamp(rate, 0, 4)];
+        const double stepBeats = kRateBeats[clamp(rate, 0, kNumRates - 1)];
         const float swing = get(kSwing) * 0.01f;
         const int steps = clamp(getInt(kSteps), 1, kMaxSteps);
+        const int loopBars = patternBars(steps, stepBeats, barBeats);
+        const double loopBeats = loopBars * barBeats;
         const int mode = getInt(kMode);
         const float depth = get(kDepth) * 0.01f, mix = get(kMix) * 0.01f, width = get(kWidth) * 0.01f;
         const double beatsPerSample = bpm / 60.0 / sr_;
@@ -292,13 +297,21 @@ public:
         double pos;
         if (playing)
         {
+            // Position in the bar, then which bar of the loop (bars counted from the song start).
             double inBar = tr.ppqPos - tr.barStartPpq;
-            if (!(inBar >= 0.0 && inBar < barBeats + 1.0e-6)) inBar = std::fmod(tr.ppqPos, barBeats);
-            if (inBar < 0.0) inBar += barBeats;
-            pos = inBar;
+            double barStart = tr.barStartPpq;
+            if (!(inBar >= 0.0 && inBar < barBeats + 1.0e-6))
+            {
+                barStart = std::floor(tr.ppqPos / barBeats) * barBeats;
+                inBar = tr.ppqPos - barStart;
+            }
+            if (inBar < 0.0) inBar = 0.0;
+            long long bar = std::llround(barStart / barBeats) % loopBars;
+            if (bar < 0) bar += loopBars;
+            pos = (double)bar * barBeats + inBar;
             if (!wasPlaying_) lastStep_ = -1;          // MPC just started: retrigger cleanly
         }
-        else pos = freePos_;
+        else pos = freePos_ < loopBeats ? freePos_ : std::fmod(freePos_, loopBeats);
         wasPlaying_ = playing;
 
         // ----- Tap Rec -----
@@ -328,7 +341,7 @@ public:
                 targetL = 1.0f - mix * depth * (1.0f - gl);
                 targetR = 1.0f - mix * depth * (1.0f - gr);
                 pos += beatsPerSample;
-                if (pos >= barBeats) { pos -= barBeats; lastStep_ = -1; }
+                if (pos >= loopBeats) { pos -= loopBeats; lastStep_ = -1; }
             }
             gainL_ += declick_ * (targetL - gainL_);
             gainR_ += declick_ * (targetR - gainR_);
@@ -351,6 +364,15 @@ private:
         return 4.0;
     }
 
+public:
+    // Fewest whole bars that hold the pattern (Steps x Rate), at least 1. Capped at 8 bars.
+    static int patternBars(int steps, double stepBeats, double barBeats)
+    {
+        const double bars = steps * stepBeats / barBeats;
+        return clamp((int)std::ceil(bars - 1.0e-6), 1, 8);
+    }
+
+private:
     void updateCurve(float c)
     {
         if (c == curveValue_) return;
@@ -380,13 +402,14 @@ private:
     // Pattern letters: X = 100 %, x = 65 %, g = 30 % (ghost), . = off.
     void addPrograms()
     {
-        struct Shape { int mode; float attack, length, release, curve, depth, swing; int rate; float width; };
+        struct Shape { int mode; float attack, length, release, curve, depth, swing; int rate; float width; int steps = 16; };
         auto program = [this](const char* name, const char* pattern, Shape s)
         {
             std::vector<float> v((size_t)numParams());
             for (int i = 0; i < numParams(); ++i) v[(size_t)i] = param(i).def;
             v[kMode] = (float)s.mode; v[kAttack] = s.attack; v[kLength] = s.length; v[kRelease] = s.release;
             v[kCurve] = s.curve; v[kDepth] = s.depth; v[kSwing] = s.swing; v[kRate] = (float)s.rate; v[kWidth] = s.width;
+            v[kSteps] = (float)s.steps;
             for (int i = 0; i < kMaxSteps; ++i)
             {
                 const char c = pattern[i];
@@ -404,6 +427,21 @@ private:
         program("Ghost Chop",        "XggXgXggXggXgXgg", {kGate,     1.0f, 55, 12,   30, 100, 54, 2, 100});
         program("Smooth Pulse",      "X.X.X.X.X.X.X.X.", {kSmooth,   5.0f, 50, 100,   0,  85, 50, 2, 100});
         program("Ping-Pong Stutter", "XXXXXXXXXXXXXXXX", {kPingPong, 1.0f, 45, 15,   20, 100, 50, 2, 100});
+        // Added after the hardware test (rate 5 = 1/4, rate 3 = 1/16T, rate 4 = 1/32). Append only.
+        // House / techno pumps
+        program("2 and 4 Duck",      "....X.......X...", {kPump,     1.0f, 50, 300,  30, 100, 50, 2, 100});
+        program("Swung 16th Pump",   "XgxgXgxgXgxgXgxg", {kPump,     1.0f, 50, 90,   20,  75, 58, 2, 100});
+        program("Half-Time Pump",    "X.X.X.X.X.X.X.X.", {kPump,     3.0f, 50, 180, -30,  85, 50, 5, 100});
+        // Trance gates
+        program("Gallop 16ths",      "X.XXX.XXX.XXX.XX", {kGate,     1.0f, 55, 10,   30, 100, 50, 2, 100});
+        program("Triplet Roll",      "XxxXxxXxxXxx....", {kGate,     1.0f, 50, 12,   20, 100, 50, 3, 100, 12});
+        program("32nd Stutter",      "XxxxXxxxXxxxXxxx", {kGate,     0.5f, 45, 8,    40, 100, 50, 4, 100});
+        // Broken / syncopated
+        program("Dotted 8ths",       "X..X..X..X..X...", {kGate,     1.0f, 100, 60,   0, 100, 50, 2, 100});
+        program("Clave 3-2",         "X..X..X...X.X...", {kGate,     1.0f, 100, 80,  20, 100, 50, 2, 100});
+        // Slow 1/4 pulses for pads and drones
+        program("Slow Swell",        "XXXXXXXXXXXXXXXX", {kSmooth,  10.0f, 50, 100,   0,  70, 50, 5, 100});
+        program("Bar Swell",         "X...X...X...X...", {kSmooth,  20.0f, 100, 300,  0,  90, 50, 5, 100});
     }
 
     static mpc::PluginInfo makeInfo()

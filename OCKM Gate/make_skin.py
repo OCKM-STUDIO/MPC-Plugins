@@ -14,7 +14,7 @@ SDK is the MPC Plugin SDK folder ($MPC_SDK, default /Users/simon/Projects/mpc-pl
 
 What it does:
   1. Draws the artwork into assets/ (build.py copies assets/ into Plugin Skins/):
-       panel_acid.png, panel_macros.png  worn, scratched brushed-aluminium panels (1280 x 628)
+       panel_<page>.png                   worn, scratched brushed-aluminium panels (1280 x 628)
                                           with printed section frames, headings and knob scales
        knob.png                           127-frame film strip: black knurled knob, spun-metal cap
        toggle_on.png, toggle_off.png      worn plastic switches (on = lit amber)
@@ -229,7 +229,7 @@ def draw_panel(seed, headings, knob_slots, fader_slots, button_slots, plates=(),
     for col, title in enumerate(headings):
         if title:
             letters = np.maximum(letters, text_mask(H, W, title, SLOT_X[col] + 8, 20, 4))
-    # Name badge in the empty bottom slot of the VOICE column (empty on both pages).
+    # Name badge in an empty slot (BADGES gives the column and row per page).
     mark, sub = "OCKM GATE", "TRANCE GATE"
     mx = my = mw = -1000
     if badge is not None:
@@ -479,10 +479,10 @@ def dump_pairs(o, indent=0):
     return json.dumps(o)
 
 
-HEADINGS = {"GATE": ["PULSE", "SHAPE", "RHYTHM", "TAP"],
+HEADINGS = {"GATE": ["PULSE", "SHAPE", "RHYTHM", "OUTPUT"],
             "STEPS": ["", "", "", ""],
             "LEVELS": ["", "", "", ""]}
-BADGES = {"GATE": (2, 3)}          # (column, row) of the empty slot that carries the name badge
+BADGES = {"GATE": (3, 0)}          # (column, row) of the empty slot that carries the name badge
 
 TINTS = {
     # rgb: colour of the metal; lum: brightness shift; plate: label strips; background: overlay colour

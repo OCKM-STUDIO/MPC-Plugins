@@ -1,6 +1,6 @@
 # OCKM Gate
 
-A tempo-locked trance gate and pump effect for Akai MPC standalone hardware, by OCKM. It chops, pumps and pulses whatever runs through it, in a rhythm you program, tap in or pick from presets, locked to the MPC's sequencer.
+A tempo-locked trance gate and pump effect for Akai MPC standalone hardware, by OCKM. It chops, pumps and pulses whatever runs through it, in a rhythm you program or pick from 18 presets, locked to the MPC's sequencer.
 
 ## Requirements
 
@@ -11,15 +11,15 @@ A tempo-locked trance gate and pump effect for Akai MPC standalone hardware, by 
 ## How it follows the MPC
 
 Effects on the MPC get no MIDI, but they do get the tempo and song position, so the gate stays on the beat:
-- **Playing:** steps are locked to the song position and the pattern restarts every bar, so it stays in time through stop, start and loops.
+- **Playing:** steps are locked to the song position, so it stays in time through stop, start and loops. The pattern restarts every bar when it fits in one (16 × 1/16); a longer one restarts every 2 or 4 bars, counted from the start of the sequence (16 × 1/8 = 2 bars, 16 × 1/4 = 4 bars).
 - **Stopped:** with **Run Stopped** On (default) it keeps pulsing at the MPC's tempo so you can hear it while auditioning; Off passes audio untouched.
 
 ## Setting the rhythm
 
 The pattern is 16 steps; each has an **On/Off** switch (STEPS page) and a **Level** (LEVELS page) for accents and ghost steps.
-- **Presets:** pick one of the 8 built-in programs, then edit.
-- **Tap it in:** turn on **Tap Rec**, start the MPC, and touch **TAP** (or turn its Q-Link) in time. Each tap switches on the step nearest to it; the first tap after arming clears the old pattern (levels are kept). Turn Tap Rec off when done, then fine-tune on the STEPS and LEVELS pages. Taps are ignored while the MPC is stopped.
-- **Steps** (1–16) sets the pattern length inside each bar; **Rate** the step size (1/8 … 1/32, with triplets); **Swing** delays every second step.
+- **Presets:** pick one of the 18 built-in programs, then edit.
+- **Steps** (1–16) sets the pattern length; **Rate** the step size (1/4, 1/8, 1/16, 1/32 and the 1/8 and 1/16 triplets); **Swing** delays every second step.
+- The Rate menu lists 1/4 last (after 1/32), because it was added after the first version and older projects must keep their rate.
 
 ## The pulse: Mode and shape
 
@@ -34,25 +34,33 @@ The pattern is 16 steps; each has an **On/Off** switch (STEPS page) and a **Leve
 
 ## Pages
 
-- **GATE:** Mode, Depth, Mix, Width | Attack, Length, Release, Curve | Rate, Steps, Swing | Tap Rec, TAP, Run Stopped, Output.
+- **GATE:** Pulse: Mode, Depth, Mix, Width | Shape: Attack, Length, Release, Curve | Rhythm: Rate, Steps, Swing, Run Stopped | Output (fader).
 - **STEPS:** 16 on/off switches, steps 1–16 in reading order.
 - **LEVELS:** 16 level knobs, same order. The Q-Link columns cover steps 1/5/9/13 etc.
 
 ## Presets
 
-Init · Classic 16ths · Offbeat Pump · Quarter Pump · 3-3-2 · Ghost Chop · Smooth Pulse · Ping-Pong Stutter. Each sets a rhythm and a matching pulse shape.
+Each sets a rhythm and a matching pulse shape.
+
+- **Original 8:** Init · Classic 16ths · Offbeat Pump · Quarter Pump · 3-3-2 · Ghost Chop · Smooth Pulse · Ping-Pong Stutter.
+- **House / techno pumps:** 2 and 4 Duck (pump on beats 2 and 4) · Swung 16th Pump (every 16th, accented, 58% swing) · Half-Time Pump (1/4, ducks on beats 1 and 3).
+- **Trance gates:** Gallop 16ths (X.XX repeated) · Triplet Roll (1/16T, 12 steps, accent every third) · 32nd Stutter (1/32, accent every fourth).
+- **Broken / syncopated:** Dotted 8ths (3-3-3-3-4) · Clave 3-2.
+- **Slow 1/4 pulses:** Slow Swell (a soft swell on every beat) · Bar Swell (one long swell per bar).
 
 ## CPU
 
 About 0.03–0.07% of one desktop core in the SDK's host simulator, so expect well under 2% on an MPC One. Not yet measured on hardware.
 
-## Needs checking on hardware
+## Tested on an MPC One (2026-11-14)
 
-When a tap switches a step on, the plugin tells the MPC so the STEPS page redraws. If the MPC doesn't redraw straight away, the rhythm still plays correctly and the switches update when you change page.
+- Loads, plays and stays in time with the sequencer. The STEPS switches sit correctly next to their labels, and a step switch turns off and on with one touch.
+- **Tap Rec was dropped:** tapping on the touch screen didn't land the rhythm where it was meant to go. TAP and Tap Rec are no longer on the screen; the presets cover the common rhythms instead. The two parameters still exist inside the plugin (Tap Rec is off), so projects saved with the first build load unchanged.
+- Added after the test: the 1/4 rate and 10 more presets. These have been checked on the computer but not yet on the MPC.
 
 ## Not in v1
 
-Pad or MIDI triggering (the MPC doesn't send MIDI to effects), more than 16 steps, per-step pan or filter, a filter gate, sidechain from another track, tap offset calibration.
+Pad or MIDI triggering (the MPC doesn't send MIDI to effects), tapping a rhythm in (tried and dropped, see above), more than 16 steps, per-step pan or filter, a filter gate, sidechain from another track.
 
 ## Build and test
 

@@ -1,6 +1,6 @@
 # OCKM Gate — specification (v1)
 
-Status: **built (v1).** Decisions taken while building are marked "(build)".
+Status: **built (v1), tested on an MPC One 2026-11-14.** Decisions taken while building are marked "(build)"; changes after the hardware test are marked "(hardware)" and listed in section 12.
 
 OCKM Gate is a tempo-locked trance gate / pump **effect** for the MPC. It chops, pumps and pulses whatever runs through it, in a rhythm you program, tap in, or pick from presets. Inspiration: the rhythmic pulse sounds on Simon's groovebox. Naming rule: no third-party product or brand names in the code, UI, presets or README; describe it as "trance gate", "pump" or "slicer".
 
@@ -32,11 +32,12 @@ The pattern is 16 steps. Each step has an **On/Off switch** and a **Level** (0�
 
 Plus:
 
-4. **Tap it in (live):** arm `Tap Rec`, start the MPC, and tap the on-screen **TAP** button (or turn its Q-Link) in time with the music. Each tap switches on the step nearest to it in time; the first tap after arming clears the old pattern. Disarm when done, then adjust with the grid and levels. See section 7 for how this works and its limits.
+4. ~~**Tap it in (live)**~~ (hardware): dropped after the MPC test, see sections 7 and 12.
 
 Other rhythm controls:
 - `Steps`: pattern length, 1–16 (for 3-, 5- and 7-step polyrhythms against the bar).
-- `Rate`: step length, one of 1/8, 1/8T, 1/16, 1/16T, 1/32. Default 1/16.
+- `Rate`: step length, one of 1/8, 1/8T, 1/16, 1/16T, 1/32, 1/4 (1/4 added last: hardware). Default 1/16.
+- The pattern restarts every N bars, N being the fewest whole bars that hold Steps × Rate (16 × 1/16 = 1 bar, 16 × 1/8 = 2, 16 × 1/4 = 4), counted from the song start (hardware).
 - `Swing`: 50–75%, delays every second step.
 
 ## 3. The nature of the pulse: four modes and a shape
@@ -82,7 +83,7 @@ Parameter 0 is Output, which is harmless when the host nudges it on load. Append
 | 1 | `mode` | Mode | Gate / Pump / Smooth / PingPong | Gate |
 | 2 | `depth` | Depth | 0–100% | 100 |
 | 3 | `mix` | Mix | 0–100% | 100 |
-| 4 | `rate` | Rate | 1/8, 1/8T, 1/16, 1/16T, 1/32 | 1/16 |
+| 4 | `rate` | Rate | 1/8, 1/8T, 1/16, 1/16T, 1/32, 1/4 (1/4 appended: saved values are plain choice indices, so old projects keep their rate) (hardware) | 1/16 |
 | 5 | `attack` | Attack | 0.5–50 ms | 2 ms |
 | 6 | `length` | Length | 5–100% | 50 |
 | 7 | `release` | Release | 1–400% of a step (a pump can recover across several steps) (build) | 15 |
@@ -91,8 +92,8 @@ Parameter 0 is Output, which is harmless when the host nudges it on load. Append
 | 10 | `steps` | Steps | 1–16 | 16 |
 | 11 | `width` | Width | 0–100% | 100 |
 | 12 | `runstop` | Run Stopped | Off / On | On |
-| 13 | `taprec` | Tap Rec | Off / On | Off |
-| 14 | `tap` | TAP | button (any press = one tap) | — |
+| 13 | `taprec` | Tap Rec | Off / On (not on screen since the hardware test) | Off |
+| 14 | `tap` | TAP | button (any press = one tap; not on screen since the hardware test) | — |
 | 15–30 | `on1`…`on16` | Step 1…16 | Off / On | all On (matches the "Init" preset, which the MPC loads first) (build) |
 | 31–46 | `lv1`…`lv16` | Lvl 1…16 | 0–100% | 100 |
 
@@ -102,27 +103,29 @@ That makes 47 parameters.
 
 **GATE** (the front page: the sound):
 
-| Pulse | Shape | Rhythm | Tap / Out |
+| Pulse | Shape | Rhythm | Output |
 |---|---|---|---|
-| Mode (menu) (build) | Attack | Rate (menu) | Tap Rec (switch) |
-| Depth | Length | Steps | TAP (button) |
-| Mix (fader) | Release | Swing | Run Stopped (switch) |
-| Width | Curve (bipolar) | *empty* | Output (fader) |
+| Mode (menu) (build) | Attack | Rate (menu) | *OCKM GATE badge* |
+| Depth | Length | Steps | *empty* |
+| Mix (fader) | Release | Swing | *empty* |
+| Width | Curve (bipolar) | Run Stopped (switch) | Output (fader) |
+
+(hardware) TAP and Tap Rec were taken off this page; Run Stopped moved into the Rhythm column.
 
 **STEPS:** 16 on/off switches, steps 1–16 in reading order (row 1 = steps 1–4).
 
 **LEVELS:** 16 knobs, same order. A Q-Link column covers steps 1, 5, 9 and 13 (the downbeats of each quarter), which suits accent work.
 
-## 7. Tap Rec: how it works
+## 7. Tap Rec: how it worked (dropped from the screen after the hardware test)
 
 - The on-screen TAP is a parameter. Every press changes it; the plugin treats any change as one tap.
 - The plugin remembers the latest song position from the audio thread. On a tap it works out the nearest step (taking `Rate`, `Swing` and `Steps` into account), switches that step's On/Off parameter on, and tells the MPC the parameter changed so the STEPS page updates.
 - Taps only count while `Tap Rec` is On **and** the MPC is playing, so loading a project or a preset can never write a pattern.
 - The first tap after arming clears all 16 On switches (levels are kept).
 - **Limit:** the touch screen and UI add some delay. Snapping to the nearest 1/16 hides most of it, but very fast taps at 1/32 may land a step late. A `Tap Offset` setting is a possible later addition.
-- **Needs a hardware check:** that the MPC redraws the STEPS page when the plugin changes its own parameters. If it doesn't, the pattern still plays correctly, but the switches only redraw when you change page.
+- **Hardware result:** the MPC does pick up step changes the plugin makes itself (the STEPS page showed them, and the switches stayed in step with the sound), but tapped rhythms didn't land where they were meant to. Tapping was dropped in favour of more presets. The code and both parameters stay, so ids and order are unchanged, but neither is on screen. `Tap Rec` defaults to Off, so the hidden code does nothing.
 
-## 8. Factory presets (built-in programs, 8)
+## 8. Factory presets (built-in programs, 18)
 
 Each one sets the rhythm **and** the pulse shape.
 
@@ -135,9 +138,22 @@ Each one sets the rhythm **and** the pulse shape.
 7. **Smooth Pulse:** Smooth mode, every 8th, a soft tremolo wash for pads.
 8. **Ping-Pong Stutter:** Ping-Pong mode, 1/16, full width.
 
+Added after the hardware test (appended, so 1–8 keep their numbers):
+
+9. **2 and 4 Duck:** Pump on beats 2 and 4, recovering over 3 steps.
+10. **Swung 16th Pump:** Pump on every 16th with accents and ghosts, 58% swing, 75% depth.
+11. **Half-Time Pump:** 1/4 rate, Pump on beats 1 and 3, slow curve.
+12. **Gallop 16ths:** the X.XX trance gallop, hard gate.
+13. **Triplet Roll:** 1/16T, 12 steps, accent every third.
+14. **32nd Stutter:** 1/32, accent every fourth, very short release.
+15. **Dotted 8ths:** 3-3-3-3-4 (steps 1, 4, 7, 10, 13).
+16. **Clave 3-2:** steps 1, 4, 7, 11, 13.
+17. **Slow Swell:** 1/4 Smooth swell on every beat, 70% depth.
+18. **Bar Swell:** 1/4 Smooth, one long swell per bar (steps 1, 5, 9, 13 span 4 bars).
+
 ## 9. Not in v1
 
-MIDI or pad triggering (the MPC doesn't send MIDI to effects), more than 16 steps, per-step pan or filter, a filter gate, sidechain from another track, tap offset calibration, and effects beyond the gate itself.
+MIDI or pad triggering (the MPC doesn't send MIDI to effects), tapping a rhythm in (tried, dropped after the hardware test), more than 16 steps, per-step pan or filter, a filter gate, sidechain from another track, and effects beyond the gate itself.
 
 ## 10. Open questions
 
@@ -151,3 +167,14 @@ MIDI or pad triggering (the MPC doesn't send MIDI to effects), more than 16 step
 - Every On step **triggers** an envelope that runs on across Off steps, so a pump keeps recovering through them and a long Release can span several steps.
 - Taps are flagged on the UI thread and applied by the audio thread at the exact song position. Only a real change of the TAP value counts, so choosing a preset or loading a project with Tap Rec armed never writes a step.
 - Patterns restart on every bar (open question 2).
+
+## 12. Hardware test on the MPC One (2026-11-14)
+
+| Check | Result | Action |
+|---|---|---|
+| STEPS page shows steps the plugin switched on itself (Tap Rec) | Works: the switches show the right state, and one touch toggles them | none |
+| STEPS toggle switches line up with their labels and the panel art | Correct | none |
+| Tapped rhythms land where intended | No | TAP and Tap Rec taken off the GATE page; 10 presets added instead. No Tap Offset parameter. |
+| (Simon's request) a 1/4 rate | Added | `1/4` appended to Rate; patterns longer than a bar now span 2 or 4 bars instead of being cut off at the bar |
+
+Still to hear on hardware: the 1/4 rate and the 10 new presets.
