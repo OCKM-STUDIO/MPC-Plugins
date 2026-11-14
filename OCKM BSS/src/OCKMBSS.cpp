@@ -16,7 +16,8 @@
 //          -> Filter: 24 dB/oct zero-delay-feedback ladder low-pass, saturated in its loop
 //             cutoff (octaves above 40 Hz) = Cutoff knob + Env Amount * filter env
 //                                + key tracking (0.5 oct/oct from C1) - velocity darkening
-//          -> Drive (soft clip, level compensated, 0 = clean)
+//          -> Drive (soft clip, level compensated, 0 = clean) -> growl low-mid lift
+//          -> fixed 5 kHz 12 dB/oct trim (keeps the open filter full, not fizzy)
 //          -> Amp envelope (attack, Decay-driven decay, sustain, release) * velocity
 //   -> 20 Hz rumble cut -> + Echo (bass-safe ping-pong delay, lows cut from the repeats)
 //   -> Volume -> safety ceiling (transparent below -3 dBFS) -> L / R
@@ -24,7 +25,7 @@
 // The "zones" (SPEC 3a) make Cutoff and Decay cover kick-to-growl on their own:
 //   Decay 0-25 %   thump: sustain fades out, a quick pitch drop fades in at each note start
 //   Decay 75-100 % hold:  sustain pushed up toward full
-//   Cutoff 60-100 % growl: extra saw, drive and a touch of resonance on top of the knobs
+//   Cutoff 60-100 % growl: extra saw, a hotter (saturating) filter and a low-mid lift
 // Outside those ranges the knobs act exactly as set.
 //
 // Realtime rules: no allocation, locks or I/O in process(). exp2/tan/exp only once every
@@ -71,7 +72,7 @@ enum ParamIndex
 };
 
 // Mappings from normalised knob travel (0..1) to the real quantity.
-inline float cutoffHz(float n)  { return 40.0f * std::pow(250.0f, n); }    // 40 Hz .. 10 kHz
+inline float cutoffHz(float n)  { return 40.0f * std::pow(100.0f, n); }    // 40 Hz .. 4 kHz
 inline float decayMs(float n)   { return 60.0f * std::pow(50.0f, n); }     // 60 ms .. 3 s
 inline float glideMs(float n)   { return n <= 0.0f ? 0.0f : 10.0f * std::pow(50.0f, n); }   // 0 (off), 10 .. 500 ms
 inline float attackMs(float n)  { return std::pow(1000.0f, n); }           // 1 ms .. 1 s
@@ -90,8 +91,13 @@ constexpr float kKeyTrack     = 0.5f;    // filter follows 0.5 octave per octave
 constexpr float kThumpSemis   = 24.0f;   // pitch drop at Decay 0: two octaves
 constexpr float kThumpMs      = 12.0f;   // pitch drop time constant (gone in about 40 ms)
 constexpr float kGrowlSaw     = 0.7f;    // growl zone at Cutoff 100 %: +70 % saw,
-constexpr float kGrowlDrive   = 0.6f;    //   +60 % drive,
-constexpr float kGrowlReso    = 0.15f;   //   +15 % resonance
+constexpr float kGrowlHeat    = 4.0f;    //   the filter driven up to 5x harder (saturates
+                                         //   before the filter: thick low-mids, no fizz)
+constexpr float kGrowlBody    = 1.0f;    //   and a low-mid lift (+6 dB around kBodyHz): fuller
+constexpr float kBodyHz       = 220.0f;
+constexpr float kTopKneeHz    = 2500.0f; // the filter (knob + envelope + key) eases off above here
+constexpr float kTopMaxHz     = 6000.0f; //   and never opens past this
+constexpr float kToneHz       = 5000.0f; // fixed 12 dB/oct trim after the drive
 constexpr int   kTick         = 8;       // control-rate interval in samples
 constexpr float kOutGain      = 2.2f;    // voice make-up gain (+7 dB): presets peak around -5 dBFS
 
@@ -165,7 +171,7 @@ private:
 // ---------------------------------------------------------------------------
 struct Knobs                       // knob values, normalised 0..1
 {
-    float cutoff = 0.35f, decay = 0.4f, reso = 0.25f, envAmt = 0.5f;
+    float cutoff = 0.42f, decay = 0.4f, reso = 0.25f, envAmt = 0.5f;
     float sub = 0.5f, saw = 0.3f, detune = 0.1f, glide = 0.0f;
     float attack = 0.0f, sustain = 0.25f, release = 0.1f, drive = 0.0f, velFilt = 0.3f;
 };
@@ -179,12 +185,14 @@ public:
         smooth_ = 1.0f - std::exp(-(float)kTick / (0.015f * sr_));       // 15 ms knob smoothing
         fenvAttack_ = 1.0f - std::exp(-(float)kTick / (0.00068f * sr_)); // ~1 ms filter env attack
         thumpMul_ = std::exp(-(float)kTick / (kThumpMs * 0.001f * sr_));
+        tone1_.setCutoff(kToneHz, sampleRate); tone2_.setCutoff(kToneHz, sampleRate);
+        bodyBand_.setCoeffs(BiquadCoeffs::bandpass(sampleRate, kBodyHz, 0.7f));
         reset();
     }
 
     void reset()
     {
-        filter_.reset();
+        filter_.reset(); tone1_.reset(); tone2_.reset(); bodyBand_.reset();
         gate_ = false; stage_ = kIdle; amp_ = 0.0f;
         fenv_ = 0.0f; fenvRising_ = false; drop_ = 0.0f;
         pitch_ = pitchTarget_ = 36.0f;
@@ -248,7 +256,7 @@ public:
                     break;
                 case kRelease:
                     amp_ *= releaseMul_;
-                    if (amp_ < 1.0e-4f) { amp_ = 0.0f; stage_ = kIdle; filter_.reset(); return; }   // -80 dB: done
+                    if (amp_ < 1.0e-4f) { amp_ = 0.0f; stage_ = kIdle; filter_.reset(); tone1_.reset(); tone2_.reset(); bodyBand_.reset(); return; }   // -80 dB: done
                     break;
                 default: break;
             }
@@ -267,9 +275,11 @@ public:
 
             // Filter, drive, amp.
             Gs_ += 0.35f * (G_.next() - Gs_);                                 // rounds the ramp's corners
-            float y = filter_.process(mix, Gs_, k_.next(), comp_.next());
+            float y = filter_.process(mix, Gs_, k_.next(), comp_.next()) * heatOut_.next();
             const float dMix = driveMix_.next(), dPre = drivePre_.next(), dNorm = driveNorm_.next();
             if (dMix > 0.0f) y += dMix * (fastTanh(y * dPre) * dNorm - y);
+            y += body_.next() * bodyBand_.process(y);                         // low-mid lift (growl)
+            y = tone2_.process(tone1_.process(y));                           // trim the fizz
             out[i] += y * amp_ * velGain_ * kOutGain;
         }
     }
@@ -304,8 +314,9 @@ private:
         sus += (1.0f - sus) * hold;
         sus_ = sus;
         const float sawLvl = clamp(s_.saw + kGrowlSaw * growl, 0.0f, 1.0f);
-        const float drive = clamp(s_.drive + kGrowlDrive * growl, 0.0f, 1.0f);
-        const float reso = clamp(s_.reso + kGrowlReso * growl, 0.0f, 1.0f);
+        const float drive = s_.drive;
+        const float reso = s_.reso;
+        const float heat = 1.0f + kGrowlHeat * growl;
 
         // Envelopes at control rate.
         const float dms = decayMs(s_.decay);
@@ -325,7 +336,9 @@ private:
         // Filter cutoff in octaves above 40 Hz.
         const float keyOct = clamp(kKeyTrack * (pitch_ - 36.0f) * (1.0f / 12.0f), -3.0f, 4.0f);
         const float velOct = -kVelOctaves * s_.velFilt * (1.0f - vel01_);
-        const float oct = std::log2(250.0f) * s_.cutoff + kEnvOctaves * s_.envAmt * fenv_ + keyOct + velOct;
+        float oct = std::log2(100.0f) * s_.cutoff + kEnvOctaves * s_.envAmt * fenv_ + keyOct + velOct;
+        static const float kKneeOct = std::log2(kTopKneeHz / 40.0f), kRoomOct = std::log2(kTopMaxHz / kTopKneeHz);
+        if (oct > kKneeOct) oct = kKneeOct + kRoomOct * std::tanh((oct - kKneeOct) / kRoomOct);   // soft top
         const float fc = clamp(40.0f * std::exp2(oct), 20.0f, 0.45f * sr_);
         const float g = std::tan(kPi * fc / sr_);
         const float Gnext = g / (1.0f + g);
@@ -341,7 +354,9 @@ private:
         const float norm = 1.0f / (1.0f + 0.6f * s_.sub + 0.5f * sawL);
         subLvl_.to(s_.sub, snap);
         sawLvl_.to(sawL, snap);
-        comp_.to(0.75f * std::pow(1.0f + k, 0.6f) * norm, snap);
+        comp_.to(0.75f * std::pow(1.0f + k, 0.6f) * norm * heat, snap);
+        body_.to(kGrowlBody * growl, snap);
+        heatOut_.to(std::pow(heat, -0.65f), snap);                        // level-match the hotter filter
         const float pre = 1.0f + 8.0f * drive * drive;
         drivePre_.to(pre, snap);
         driveMix_.to(clamp(2.0f * drive, 0.0f, 1.0f), snap);
@@ -357,7 +372,9 @@ private:
     float fenv_ = 0.0f, drop_ = 0.0f, glideCoef_ = 1.0f;
     float pitch_ = 36.0f, pitchTarget_ = 36.0f, vel01_ = 1.0f, velGain_ = 1.0f;
     float phase_ = 0.0f, sawPhase_ = 0.0f, subFlip_ = 0.0f, detuneRatio_ = 1.0f;
-    Ramp inc_, G_, k_, comp_, subLvl_, sawLvl_, drivePre_, driveMix_, driveNorm_;
+    Ramp inc_, G_, k_, comp_, heatOut_, body_, subLvl_, sawLvl_, drivePre_, driveMix_, driveNorm_;
+    OnePoleLP tone1_, tone2_;
+    Biquad bodyBand_;
     float Gs_ = 0.0f;
     int ctr_ = 0;
 };
@@ -504,7 +521,7 @@ public:
     {
         using namespace mpc;
         addParam(floatParam("volume",  "Volume",     -60.0f, 6.0f, -6.0f, "dB", 1));
-        addParam(floatParam("cutoff",  "Cutoff",       0.0f, 100.0f, 35.0f, "Hz", 0));
+        addParam(floatParam("cutoff",  "Cutoff",       0.0f, 100.0f, 42.0f, "Hz", 0));
         addParam(floatParam("decay",   "Decay",        0.0f, 100.0f, 40.0f, "ms", 0));
         addParam(floatParam("reso",    "Resonance",    0.0f, 100.0f, 25.0f, "%", 0));
         addParam(floatParam("envamt",  "Env Amount",   0.0f, 100.0f, 50.0f, "%", 0));
@@ -531,15 +548,15 @@ public:
         };
         // Presets are mostly spots on the Cutoff x Decay map (SPEC 7).
         program("Init Soft Bass",   {});
-        program("Kick Thud",        {{kCutoff, 8}, {kDecay, 3}, {kSub, 70}});
-        program("Deep Round Sub",   {{kCutoff, 15}, {kDecay, 55}, {kSaw, 10}, {kSub, 70}});
-        program("Warm House Pluck", {{kCutoff, 40}, {kDecay, 20}, {kEchoTime, 3}, {kEchoMix, 15}});
-        program("Rubber Glide",     {{kCutoff, 30}, {kDecay, 60}, {kGlide, 35}, {kReso, 40}});
-        program("Buzzy Techno",     {{kCutoff, 65}, {kDecay, 50}, {kDrive, 20}});
-        program("Muffled Dub",      {{kCutoff, 12}, {kDecay, 85}, {kRelease, 35}, {kDetune, 30},
+        program("Kick Thud",        {{kCutoff, 10}, {kDecay, 3}, {kSub, 70}});
+        program("Deep Round Sub",   {{kCutoff, 18}, {kDecay, 55}, {kSaw, 10}, {kSub, 70}});
+        program("Warm House Pluck", {{kCutoff, 48}, {kDecay, 20}, {kEchoTime, 3}, {kEchoMix, 15}});
+        program("Rubber Glide",     {{kCutoff, 36}, {kDecay, 60}, {kGlide, 35}, {kReso, 40}});
+        program("Buzzy Techno",     {{kCutoff, 78}, {kDecay, 50}, {kDrive, 20}});
+        program("Muffled Dub",      {{kCutoff, 14}, {kDecay, 85}, {kRelease, 35}, {kDetune, 30},
                                      {kEchoTime, 4}, {kEchoFb, 55}, {kEchoMix, 30}});
-        program("Full Growl",       {{kCutoff, 95}, {kDecay, 92}, {kReso, 35}, {kDetune, 25}});
-        program("Open Sweep",       {{kCutoff, 20}, {kDecay, 30}, {kReso, 55}});
+        program("Full Growl",       {{kVolume, -9}, {kCutoff, 100}, {kDecay, 92}, {kReso, 35}, {kDetune, 25}});
+        program("Open Sweep",       {{kCutoff, 24}, {kDecay, 30}, {kReso, 55}});
     }
 
     void prepare(double sampleRate, int /*maxBlockSize*/) override

@@ -10,8 +10,9 @@
 > knob is for setting up the character once; presets are mostly different spots on the
 > Cutoff × Decay map. See section 3a.
 
-Status: **built (v1.0.0), 2026-11-14.** Build 0 errors / 0 warnings, host_sim 19/19, harness ALL
-PASS. Not yet tried on the MPC One. Section 12 lists what the build changed from this draft.
+Status: **v1.1.0, 2026-11-14.** Build 0 errors / 0 warnings, host_sim 19/19, harness ALL
+PASS. v1.0.0 played on the MPC One; v1.1.0 makes the open filter fuller instead of fizzy
+(section 13). Section 12 lists what the first build changed from this draft.
 
 | Item | Value |
 |---|---|
@@ -69,12 +70,12 @@ few dB of each other.
 
 ## 3. Filter: the main feature
 
-Signal flow: **Core + Sub + Saw → Filter → Drive → Amp → DC/rumble cut → (+ Echo) → Volume → safety limit**
+Signal flow: **Core + Sub + Saw → Filter → Drive → growl low-mid lift → 5 kHz trim → Amp → DC/rumble cut → (+ Echo) → Volume → safety limit**
 
 - **24 dB/octave resonant low-pass**, a zero-delay-feedback (TPT) four-pole ladder. It stays
   stable when its cutoff is swept fast, which is what the Cutoff Q-Link and the envelope do.
 - **Cutoff knob law**: exponential, 0% ≈ 40 Hz (just the fundamental: muffled, round) to
-  100% ≈ 10 kHz (bright, buzzy; see section 12). Each 10% of travel is about 0.8 octave, so every part of the
+  100% ≈ 4 kHz (open and full; see section 13). Each 10% of travel is about 0.66 octave, so every part of the
   knob's travel changes the sound by the same musical amount (no dead top half, no jumpy bottom).
 - **Key tracking** (fixed, no knob): the cutoff follows the played note at half an octave per
   octave, measured from C1, so high notes keep their brightness and low notes don't get fizzy.
@@ -116,16 +117,16 @@ end of the journey needs, so the other knobs can stay where they are.
   notes hold and keep growling.
 - between 25% and 75%, the Sustain knob is used as set.
 
-**Cutoff** (0–100%, exponential, ≈ 40 Hz … 10 kHz) sets the brightness, and:
+**Cutoff** (0–100%, exponential, ≈ 40 Hz … 4 kHz) sets the brightness, and:
 
-- **growl zone (Cutoff 60–100%)**: extra saw and extra drive fade in on top of the Saw and Drive
-  knobs (up to +70% saw and +60% drive at Cutoff 100%), with a touch more resonance (+15%), so the
-  top of the knob turns from bright into a thick, buzzing growl rather than just thin and fizzy.
-- below 60%, Saw, Drive and Resonance are exactly as set.
+- **growl zone (Cutoff 60–100%)**: extra saw fades in on top of the Saw knob (up to +70%), the
+  filter is driven harder (up to 5× into its own saturation, level-matched), and a low-mid lift
+  around 220 Hz comes in (up to about +6 dB). The saturation happens before the filter, so its
+  extra harmonics are filtered too: the top of the knob gets thicker and fuller, not fizzier.
+- below 60%, Saw is exactly as set and the filter and low-mid lift are untouched.
 
 These are **offsets added to the character knobs and clamped, never overwrites**: with the knobs
-at their defaults the journey is as described; turning Saw or Drive up just starts the growl
-earlier. All of it is worked out once per block and smoothed, so riding the two Q-Links is
+at their defaults the journey is as described; turning Saw up just starts the growl earlier. All of it is worked out once per block and smoothed, so riding the two Q-Links is
 click-free.
 
 The map, with every other knob at its default:
@@ -184,7 +185,7 @@ A tempo-synced delay built for bass (Simon: "let's get it in, with the echoes' l
 | # | id | Name | Range | Default |
 |---|---|---|---|---|
 | 0 | `volume` | Volume | −60 … +6 dB | −6 dB |
-| 1 | `cutoff` | Cutoff | 0–100% (≈40 Hz … 10 kHz, exponential; growl zone, §3a) | 35% |
+| 1 | `cutoff` | Cutoff | 0–100% (≈40 Hz … 4 kHz, exponential; growl zone, §3a) | 42% |
 | 2 | `decay` | Decay | 0–100% (≈60 ms … 3 s; filter, 1.5× for amp; thump and hold zones, §3a) | 40% |
 | 3 | `reso` | Resonance | 0–100% | 25% |
 | 4 | `envamt` | Env Amount | 0–100% (0 … +6 oct) | 50% |
@@ -235,15 +236,15 @@ be turned into any other spot on the map with the first two Q-Links.
 
 | # | Name | Cutoff / Decay | Other changes |
 |---|---|---|---|
-| 1 | **Init Soft Bass** | 35 / 40 | the defaults: round core, half sub, a touch of saw |
-| 2 | **Kick Thud** | 8 / 3 | Sub 70: almost a kick, tuned to the note |
-| 3 | **Deep Round Sub** | 15 / 55 | Saw 10, Sub 70: warm sub for minimal techno |
-| 4 | **Warm House Pluck** | 40 / 20 | Echo 1/8. at 15%: the bouncy deep-house pluck |
-| 5 | **Rubber Glide** | 30 / 60 | Glide 35%, Resonance 40 |
-| 6 | **Buzzy Techno** | 65 / 50 | Drive 20 |
-| 7 | **Muffled Dub** | 12 / 85 | Release 35, Detune 30, Echo 1/4, Feedback 55, Mix 30: dub techno |
-| 8 | **Full Growl** | 95 / 92 | Resonance 35, Detune 25 |
-| 9 | **Open Sweep** | 20 / 30 | Resonance 55: start here and ride both Q-Links up to the growl |
+| 1 | **Init Soft Bass** | 42 / 40 | the defaults: round core, half sub, a touch of saw |
+| 2 | **Kick Thud** | 10 / 3 | Sub 70: almost a kick, tuned to the note |
+| 3 | **Deep Round Sub** | 18 / 55 | Saw 10, Sub 70: warm sub for minimal techno |
+| 4 | **Warm House Pluck** | 48 / 20 | Echo 1/8. at 15%: the bouncy deep-house pluck |
+| 5 | **Rubber Glide** | 36 / 60 | Glide 35%, Resonance 40 |
+| 6 | **Buzzy Techno** | 78 / 50 | Drive 20 |
+| 7 | **Muffled Dub** | 14 / 85 | Release 35, Detune 30, Echo 1/4, Feedback 55, Mix 30: dub techno |
+| 8 | **Full Growl** | 100 / 92 | Resonance 35, Detune 25, Volume −9 dB |
+| 9 | **Open Sweep** | 24 / 30 | Resonance 55: start here and ride both Q-Links up to the growl |
 
 ## 8. CPU budget (MPC One, 32-bit ARM)
 
@@ -374,3 +375,31 @@ kick corner falls from 130 Hz to 32 Hz in the first 60 ms; growl corner holds it
 and is 13 dB fuller than Init; Resonance 100% peaks at −1.5 dBFS worst case across C0–C6, every
 cutoff, envelope and drive; the fundamental at Resonance 100% is 3.6 dB below Resonance 0%; CPU
 about 0.1% of one desktop core.
+
+## 13. v1.1.0: full, not fizzy, at the top (after playing v1.0.0 on the MPC One)
+
+Simon's note: with Cutoff and Decay opened up, v1.0.0 got very fizzy; the soft bass he was
+aiming for just gets fuller. Measured on v1.0.0 (Init, 8th-note line, Cutoff 100 / Decay 90):
+from Cutoff 35% to 100% the energy above 2 kHz rose about 26 dB, but the 120–500 Hz body only
+rose about 9 dB. The fizz came from the filter opening to 10 kHz (and the envelope pushing it
+to 20 kHz), and from the growl zone's drive, which clipped after the filter.
+
+Changes:
+
+1. **Cutoff 40 Hz … 4 kHz** (law 40·100^x, was 40·250^x). Presets and the default were moved so
+   they keep their old frequency (Init 35% → 42%, and so on). The top of the knob is now the
+   region where a bass actually changes.
+2. **Soft top on the filter**: knob + envelope + key tracking ease off above 2.5 kHz and never
+   pass 6 kHz, so plucks no longer flash up to 20 kHz on every note.
+3. **Growl zone rebuilt**: +70% saw (as before), the filter driven up to 5× harder into its own
+   saturation (instead of extra drive after the filter), and a low-mid lift around 220 Hz (up to
+   about +6 dB). No extra resonance.
+4. **Fixed 12 dB/oct trim at 5 kHz** after the Drive knob, so Drive can't add fizz either.
+5. **Full Growl** preset at Volume −9 dB, so it peaks around −5 dBFS like the others.
+
+Measured at Cutoff 100 / Decay 90, v1.0.0 → v1.1.0: body (120–500 Hz) −20.6 → −18.5 dB, so 2
+dB closer to the sub. Energy above 2 kHz relative to the whole sound: −27.5 → −39.1 dB, about
+12 dB less. Energy at 6–12 kHz: −58 → −82 dB. The overall level is unchanged (−11.4 → −11.1 dB).
+Top-end change per quarter of Cutoff travel: 12.6, 26.2, 14.0, 7.0 dB. Presets peak at
+−4.3 … −7.8 dBFS. CPU is unchanged at about 0.1% of a desktop core (one band filter and two
+one-pole filters added).
