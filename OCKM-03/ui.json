@@ -9,22 +9,22 @@
         { "param": "Cutoff",     "widget": "knob" },
         { "param": "Accent",     "widget": "knob" },
         { "param": "Wave",       "widget": "switch" },
-        { "widget": "empty" },
+        { "param": "Oct Jump",   "widget": "knob" },
 
         { "param": "Resonance",  "widget": "knob" },
         { "param": "Accent Thr", "widget": "knob" },
         { "param": "Tuning",     "widget": "knob", "polarity": "bipolar" },
-        { "widget": "empty" },
+        { "param": "Add Slide",  "widget": "knob" },
 
         { "param": "Env Mod",    "widget": "knob" },
         { "param": "Slide Time", "widget": "knob" },
         { "param": "Drive",      "widget": "knob" },
-        { "widget": "empty" },
+        { "param": "Add Rest",   "widget": "knob" },
 
         { "param": "Decay",      "widget": "knob" },
         { "widget": "empty" },
         { "param": "Volume",     "widget": "fader" },
-        { "widget": "empty" }
+        { "param": "Variation",  "widget": "knob" }
       ] }
   ]
 }

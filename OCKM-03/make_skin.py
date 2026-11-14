@@ -226,14 +226,14 @@ def draw_panel(seed, headings, knob_slots, fader_slots, button_slots, plates=(),
     letters = np.zeros((H, W))
     for col, title in enumerate(headings):
         letters = np.maximum(letters, text_mask(H, W, title, SLOT_X[col] + 8, 20, 4))
-    # Name badge: large, centred in the unframed right-hand column.
+    # Name badge in the empty bottom slot of the VOICE column.
     mark, sub = "OCKM-03", "ACID BASS"
-    bx = SLOT_X[3]
-    mw = text_width(mark, 6)
-    mx, my = bx + (SLOT_W - mw) // 2, 270
-    letters = np.maximum(letters, text_mask(H, W, mark, mx, my, 6))
-    sw = text_width(sub, 3)
-    letters = np.maximum(letters, text_mask(H, W, sub, bx + (SLOT_W - sw) // 2, my + 66, 3))
+    bx, by = SLOT_X[1], SLOT_Y[3]
+    mw = text_width(mark, 5)
+    mx, my = bx + (SLOT_W - mw) // 2, by + 18
+    letters = np.maximum(letters, text_mask(H, W, mark, mx, my, 5))
+    sw = text_width(sub, 2)
+    letters = np.maximum(letters, text_mask(H, W, sub, bx + (SLOT_W - sw) // 2, my + 52, 2))
     # Printed captions under each switch's two buttons (the Wave switch: SAW / SQUARE), so
     # the choice is readable even if the screen's own button captions are not drawn.
     for (sx, sy, x, y, w, h), caps in zip(button_slots, switch_captions):
@@ -245,7 +245,7 @@ def draw_panel(seed, headings, knob_slots, fader_slots, button_slots, plates=(),
     rgb = rgb * (1 - 0.85 * ink[..., None]) + INK * (0.85 * ink[..., None])
 
     # Faded red stripe under the wordmark (the one splash of colour).
-    stripe = ((xx >= mx) & (xx <= mx + mw) & (yy >= my + 50) & (yy <= my + 55)).astype(float)
+    stripe = ((xx >= mx) & (xx <= mx + mw) & (yy >= my + 41) & (yy <= my + 45)).astype(float)
     stripe *= (rng.random((H, W)) > 0.12) * (smooth_noise(rng, H, W, 12) > -0.4)
     rgb = rgb * (1 - 0.7 * stripe[..., None]) + np.array([0.62, 0.22, 0.15]) * (0.7 * stripe[..., None])
 
@@ -481,7 +481,7 @@ def dump_pairs(o, indent=0):
     return json.dumps(o)
 
 
-HEADINGS = {"ACID": ["FILTER", "VOICE", "TONE", ""]}     # one page since v1.1; column 4 = badge
+HEADINGS = {"ACID": ["FILTER", "VOICE", "TONE", "MUTATE"]}     # one page since v1.1; MUTATE added in v1.2
 
 
 def main():
@@ -561,14 +561,14 @@ def main():
     with open(tui_path, "w") as f:
         f.write(dump_pairs(tui))
         f.write("\n")
-    # Program Mode Q-Links: 1-11 play the classic-panel parameters (0-10); 12-16 would land on
-    # the retired macro parameters (11-25), which do nothing, so they are left unassigned.
+    # Program Mode Q-Links: 1-11 play the classic-panel parameters (0-10), 12-15 the Mutate
+    # parameters (26-29); the retired macro parameters (11-25) do nothing, so 16 is unassigned.
     ql_path = os.path.join(SKINS, "Q-Links.json")
     with open(ql_path) as f:
         ql = json.load(f, object_pairs_hook=Pairs)
     prog = ql.get("Program Mode Q-Links")
     for i in range(16):
-        prog.set("Q-Link %d" % (i + 1), i if i <= 10 else -1)
+        prog.set("Q-Link %d" % (i + 1), i if i <= 10 else (26 + i - 11 if i <= 14 else -1))
     with open(ql_path, "w") as f:
         f.write(dump_pairs(ql))
         f.write("\n")

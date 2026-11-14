@@ -1,7 +1,7 @@
 {
   "name": "OCKM-03",
   "manufacturer": "OCKM",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "format": "vst2",
   "kind": "instrument",
   "uid": "O5uQ",
@@ -10,7 +10,7 @@
   "category": "Synth",
   "file32": "VST/ockm-03-arm32.so",
   "file64": "VST/ockm-03-arm64.so",
-  "description": "Lean monophonic acid bass synth: one oscillator, squelchy resonant ladder filter, slide, stacking accents and drive, on a classic one-page panel. Works with the MPC arp.",
+  "description": "Lean monophonic acid bass synth: one oscillator, squelchy resonant ladder filter, slide, stacking accents and drive, on a classic one-page panel, plus Mutate: repeatable octave jumps, slide-ins and rests. Works with the MPC arp.",
   "author": "OCKM",
   "url": "",
   "license": "MIT"

@@ -10,7 +10,9 @@
 >
 > When a decision in this document is unclear, this rule wins.
 
-Status: **v1.1, built.** v1.0 was built and tried on Simon's MPC One with the MPC arp (2026-11-14). It worked, but on Classic Squelch the controls had almost no effect. v1.1 returns to the classic controls and makes the voice work under an arp; see section 0. CPU on the MPC One is still to be measured.
+Status: **built; current version v1.2** (see the line below and section 11). v1.0 was built and tried on Simon's MPC One with the MPC arp (2026-11-14). It worked, but on Classic Squelch the controls had almost no effect. v1.1 returns to the classic controls and makes the voice work under an arp; see section 0. CPU on the MPC One is still to be measured.
+
+Current version: **v1.2** (Mutate, key tracking, low cut; section 11). Not yet tested on the MPC.
 
 ## 0. v1.1 revision (after the first hardware test)
 
@@ -236,3 +238,76 @@ These items are left out on purpose, under the governing rule. Some may come lat
 4. **Releasing the newer of two held notes**: slide back to the older note, or go silent? *Recommendation: slide back without retriggering (classic mono-synth behaviour); a step-entry sequence on the MPC rarely leaves notes held anyway.*
 5. **Velocity below the accent threshold**: ignore it (as the original does), or scale the level slightly? *Recommendation: ignore it in v1, so accents stay the only dynamic and patterns sound authentic.*
 6. ~~Licence for the public release~~ **Resolved:** MIT, matching the SDK. Any DSP code borrowed from elsewhere must be MIT-compatible and credited in the README.
+
+## 11. v1.2: Mutate, key tracking, low cut (built 2026-11-14)
+
+Simon approved Mutate and asked for suggestions 2, 3 and 4 (key tracking, Add Rest, low cut) to go in from the start. The open questions were settled on the recommendations: octave jumps up only; a 1-bar repeat; slide-in without a filter re-pluck; a fifth preset; version 1.2.0. Add Rest replaced the proposed Add Accent (accents can already be set by velocity; gaps could not).
+
+### 11.1 What it does
+
+Mutate changes the notes OCKM-03 **plays**, not the notes on the MPC's grid. Each incoming note can, depending on its step in the bar, jump up an octave, slide in from the previous note, or be left out (a rest). With all three amounts at 0, OCKM-03 plays exactly what is programmed, and Variation makes no difference.
+
+**Why it is inside OCKM-03 and not a separate plugin:** on the MPC, effect plugins receive no MIDI, and no plugin can send MIDI on to another plugin or back to the MPC.
+
+**Lean check:** it serves acid basslines only. Four parameters, one Q-Link column, no new pages, a few dozen integer hashes per note-on and nothing per sample. It replaces the built-in sequencer idea (parked; see section 9).
+
+### 11.2 Where it sits
+
+`NoteInput` → **`Mutator`** → `AcidVoice` (section 1). The plugin works out the note's step, asks `Mutator::decide(step, variation, octave, slide, rest)` for a `Mutation {rest, octave, slide}`, and passes it to `NoteInput::noteOn`. `NoteInput` remembers each held key's **played** pitch (after an octave jump), so note-offs and the slide back to an older held note use the right pitch. `AcidVoice` gained one entry point, `slideIn()`.
+
+### 11.3 Repeatable, exact, nested
+
+- **Step:** the note's position since the bar start, rounded to the nearest 16th: `notePpq = ppqPos + sampleOffset × bpm / 60 / sampleRate`; `step = round(((notePpq − barStartPpq) mod beatsPerBar) × 4) mod stepsPerBar`, with `beatsPerBar` from the time signature (4/4 gives 16 steps). A 1-bar loop gets the same mutations on every pass.
+- **Order:** for each Variation (1–64) and each lane (octave, slide, rest), the 16 steps are shuffled into a fixed order by an integer hash (`hash(step, variation, lane)`, then ranked among the 16 steps). An amount of A mutates the steps whose rank r satisfies `(r + 0.5) / 16 < A`.
+- **So the amounts are exact:** 25% is always 4 of 16 steps and 50% always 8, for any Variation. (A first version compared each hash to the amount directly. It was repeatable, but a "50%" could mutate as few as 3 of 16 steps on some Variations, which feels wrong on a knob.)
+- **Nested:** turning an amount up only adds steps; turning it down removes them in reverse order.
+- **No playhead** (transport stopped or `ppqValid == false`, e.g. playing pads by hand): step = a note counter mod 16 that resets on transport start and all-notes-off.
+- Bars with more than 16 steps (e.g. 7/4) reuse the order of `step mod 16`.
+- **Hardware check still to do:** confirm that the MPC One reports `ppqPos` and `barStartPpq` while a sequence plays (listen for a repeating pattern with Add Rest at 40%). If `barStartPpq` is not provided it defaults to 0, and the modulo by `beatsPerBar` still lines steps up with the bar from song start.
+
+### 11.4 The three mutations
+
+1. **Oct Jump:** the played pitch is +12 semitones (unchanged if that would pass MIDI 127).
+2. **Add Slide:** the note glides from the previous played pitch over `Slide Time`. If the previous note is still held, this is the normal slide. If it has been released, the amp re-opens but the **filter envelope is not re-plucked**. It only slides in when the previous played note started less than one bar earlier (2 s at 120 BPM in 4/4); otherwise the note plays normally.
+3. **Add Rest:** the note is not played at all, and its note-off is ignored. Rests are decided first, so a rested step never also jumps or slides.
+
+### 11.5 Parameters (appended; 0–25 unchanged)
+
+| # | id | Name | Range | Default |
+|---|---|---|---|---|
+| 26 | `mu_oct` | Oct Jump | 0–100 % | 0 |
+| 27 | `mu_sld` | Add Slide | 0–100 % | 0 |
+| 28 | `mu_rst` | Add Rest | 0–100 % | 0 |
+| 29 | `mu_var` | Variation | 1–64 | 1 |
+
+All four are automatable, so Q-Link moves can be recorded into the MPC sequence. That makes 30 parameters, 15 of them live (0–10, 26–29).
+
+### 11.6 Key tracking and low cut (no new parameters)
+
+- **Key tracking:** the filter cutoff moves 0.5 octave per octave played, measured from C1 (MIDI 36) and following the glided pitch, limited to −3…+4 octaves. Octave-jumped and higher notes keep their brightness instead of being choked by the filter. Notes at C1 sound exactly as before; notes below C1 are a little darker than in v1.1, and notes above are brighter.
+- **Low cut:** a fixed 30 Hz, 12 dB/octave high-pass (SDK `Biquad`, Q 0.707) after the drive, so sub-30 Hz rumble doesn't eat the kick's room or the master's headroom. It raises waveform peaks by about 3 dB at the same loudness (the phase shift reshapes the wave). Rubber Sub and Acid Scream were therefore turned down 3 dB (Volume −8 and −5 dB). Its state is cleared once the voice is silent and its tail is below −140 dB, so it never decays into denormals.
+
+### 11.7 UI, Q-Links and presets
+
+| Filter | Voice | Tone | Mutate |
+|---|---|---|---|
+| Cutoff | Accent | Wave (SAW / SQUARE) | Oct Jump |
+| Resonance | Accent Thr | Tuning | Add Slide |
+| Env Mod | Slide Time | Drive | Add Rest |
+| Decay | *name badge* | Volume | Variation |
+
+- Program-mode Q-Links: 1–11 → parameters 0–10, 12–15 → 26–29, 16 unassigned.
+- Presets: the four existing presets keep Mutate at 0. A fifth, **Mutant Squelch** (Cutoff 40, Resonance 82, Env Mod 62, Decay 50, Accent 65, Oct Jump 25, Add Slide 30, Add Rest 20, Variation 7), is appended.
+- Harness-demo peaks: Init Acid −4.3, Classic Squelch −4.2, Rubber Sub −4.1, Acid Scream −4.2, Mutant Squelch −4.0 dBFS. The worst preset with every Mutate amount at maximum peaks at −5.3 dBFS.
+
+### 11.8 Tests (in `tests/harness.cpp`, all passing)
+
+- Amounts nested (30% ⊂ 60%, every Variation and lane); a different Variation gives a different set; amounts exact (25% → 4, 50% → 8 of 16, Variations 1–8).
+- Mutate at 0: output identical whatever the Variation.
+- With a running MPC transport over 4 bars: Add Rest 40% rests the same steps in every bar, matching the Mutator's prediction from the playhead step; Oct Jump 50% jumps the predicted steps (pitch measured by zero crossings), the same in every bar.
+- Oct Jump 100% with overlapping slid notes: every note-off still ends its jumped note.
+- Add Slide after a released note: no filter re-pluck (brightness), and the pitch glides.
+- Key tracking: at Cutoff 20%, C3 is better than −30 dB relative to C1 (measured −15.6 dB; untracked it would be around −45 dB).
+- Low cut: a 16 Hz saw fundamental is reduced relative to its 33 Hz harmonic (0.81, against 2.0 for a plain saw).
+- Every preset with Mutate at maximum peaks below 0 dBFS.
+- host_sim: 19/19, 30 parameters round-trip, no denormals.
