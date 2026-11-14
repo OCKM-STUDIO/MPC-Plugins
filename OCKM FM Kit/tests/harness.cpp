@@ -52,6 +52,14 @@ static double energyBus(const Out& o, int bus) { return energy(o.ch[bus * 2]) + 
 static float db(double x) { return x > 0 ? 20.0f * (float)std::log10(x) : -200.0f; }
 static int ms(double m) { return (int)(m * 0.001 * SR); }
 
+// Brightness of a mono signal: the "average frequency" sqrt(energy of the slope / energy), in Hz.
+static float brightness(const std::vector<float>& x, int a = 0, int b = -1)
+{
+    if (b < 0) b = (int)x.size();
+    double e = 0, de = 0; for (int i = a + 1; i < b; ++i) { e += (double)x[i] * x[i]; const double s1 = x[i] - x[i - 1]; de += s1 * s1; }
+    return (float)(std::sqrt(de / std::fmax(e, 1e-30)) * SR / 6.2831853);
+}
+
 static void writeWav(const char* path, const std::vector<float>& L, const std::vector<float>& R)
 {
     FILE* f = fopen(path, "wb"); if (!f) { printf("cannot write %s\n", path); return; }
@@ -157,8 +165,9 @@ int main(int argc, char** argv)
         OCKMFMKit p; p.setProgram(0); p.set(kMaster, 6.f);
         for (int d = 0; d < kNumDrums; ++d) { p.set(paramIndex(d, kLevel), 100.f); p.set(paramIndex(d, kTone), 100.f); }
         std::vector<Hit> all; for (int d = 0; d < kNumDrums; ++d) all.push_back({0, 36 + d, 127});
+        p.set(kDrive, 100.f); p.set(kVelMorph, 100.f); p.set(kVariation, 100.f);
         const float worst = peakAll(run(p, ms(500), all));
-        printf("      worst case (all levels, Tone and Master at max, all 8 together): %.2f dBFS\n", db(worst));
+        printf("      worst case (all levels, Tone, Drive and Master at max, all 8 together): %.2f dBFS\n", db(worst));
         check(ok && worst < 1.0f, "no clipping on any preset; the groove stays under -0.9 dBFS; worst case under 0 dBFS");
     }
     // 6. Routing: each drum lands on the right pair; with only 2 outputs everything is on Main.
@@ -202,27 +211,90 @@ int main(int argc, char** argv)
         check(finite && !denorm, "no NaN, Inf or denormal samples");
         check(peakAll(o, (int)(SR * 4) + ms(5)) < 1e-4f, "CC 120 (all sound off) silences every drum within 5 ms");
     }
-    // 9. Tone and the fifth knob change every drum's sound; velocity changes loudness.
+    // 9. Tone changes every drum; Morph changes every drum a lot (brightness and/or length move by 1.5x or more).
     {
-        bool okTone = true, okChar = true;
+        bool okTone = true;
         for (int d = 0; d < kNumDrums; ++d)
         {
-            for (int k : {(int)kTone, (int)kChar})
-            {
-                OCKMFMKit a, b; a.setProgram(0); b.setProgram(0);
-                a.set(paramIndex(d, k), 0.f); b.set(paramIndex(d, k), 100.f);
-                auto oa = run(a, ms(400), {{0, 36 + d, 110}}), ob = run(b, ms(400), {{0, 36 + d, 110}});
-                double diff = 0; for (size_t i = 0; i < oa.ch[0].size(); ++i) { const double e = oa.ch[0][i] - ob.ch[0][i]; diff += e * e; }
-                const double ref = std::fmax(energy(oa.ch[0]), energy(ob.ch[0]));
-                if (diff < ref * 0.05) { (k == kTone ? okTone : okChar) = false; printf("      %s knob %d makes little difference\n", names[d], k); }
-            }
+            OCKMFMKit a, b; a.setProgram(0); b.setProgram(0);
+            a.set(paramIndex(d, kTone), 0.f); b.set(paramIndex(d, kTone), 100.f);
+            auto oa = run(a, ms(400), {{0, 36 + d, 110}}), ob = run(b, ms(400), {{0, 36 + d, 110}});
+            double diff = 0; for (size_t i = 0; i < oa.ch[0].size(); ++i) { const double e = oa.ch[0][i] - ob.ch[0][i]; diff += e * e; }
+            if (diff < std::fmax(energy(oa.ch[0]), energy(ob.ch[0])) * 0.05) { okTone = false; printf("      %s: Tone makes little difference\n", names[d]); }
         }
         check(okTone, "Tone changes the sound of every drum");
-        check(okChar, "the fifth knob (Punch/Snap/Spread/Metal/Bend/Ratio) changes the sound of every drum");
+
+        bool okMorph = true;
+        for (int d = 0; d < kNumDrums; ++d)
+        {
+            float bright[3], len[3];
+            for (int k = 0; k < 3; ++k)
+            {
+                OCKMFMKit p; p.setProgram(0); p.set(paramIndex(d, kChar), 50.f * k);
+                auto o = run(p, (int)(SR * 2.0), {{0, 36 + d, 110}});
+                const auto& x = o.ch[0];
+                // brightness: the "average frequency" sqrt(energy of the slope / energy), in Hz
+                double e = 0, de = 0; for (size_t i = 1; i < x.size(); ++i) { e += (double)x[i] * x[i]; const double s1 = x[i] - x[i - 1]; de += s1 * s1; }
+                bright[k] = (float)(std::sqrt(de / std::fmax(e, 1e-30)) * SR / 6.2831853);
+                // length: time until the level stays 40 dB below its peak
+                const float pk = peak(x); int last = 0; for (size_t i = 0; i < x.size(); ++i) if (std::fabs(x[i]) > pk * 0.01f) last = (int)i;
+                len[k] = (float)(last / SR * 1000.0);
+            }
+            const float br = std::fmax(bright[0], bright[2]) / std::fmin(bright[0], bright[2]);
+            const float lr = std::fmax(len[0], len[2]) / std::fmin(len[0], len[2]);
+            printf("      %-10s Morph 0/50/100%%: brightness %5.0f / %5.0f / %5.0f Hz, length %4.0f / %4.0f / %4.0f ms\n",
+                   names[d], bright[0], bright[1], bright[2], len[0], len[1], len[2]);
+            if (br < 1.5f && lr < 1.5f) okMorph = false;
+        }
+        check(okMorph, "Morph changes every drum's character a lot (0% vs 100%: brightness or length 1.5x or more)");
         OCKMFMKit a, b; a.setProgram(0); b.setProgram(0);
         const float soft = peakAll(run(a, ms(300), {{0, 36, 1}})), hard = peakAll(run(b, ms(300), {{0, 36, 127}}));
         printf("      kick at velocity 1 is %.1f dB below velocity 127\n", db(hard) - db(soft));
         check(db(hard) - db(soft) > 8.0f, "velocity: soft hits are quieter");
+    }
+
+    // 10. v1.2 kit-wide knobs: Variation, Vel>Morph, Drive.
+    {
+        // Variation 0: repeated hits are identical. Variation 100: they differ, but stay recognisably the same drum.
+        auto repeats = [&](float var, double& spread) {
+            OCKMFMKit p; p.setProgram(0); p.set(kVariation, var);
+            const int gap = ms(250);
+            std::vector<Hit> h; for (int k = 0; k < 8; ++k) h.push_back({k * gap, 39, 100});
+            auto o = run(p, 8 * gap, h);
+            float lo = 1e9f, hi = 0; bool same = true;
+            for (int k = 0; k < 8; ++k)
+            {
+                const float b = brightness(o.ch[0], k * gap, k * gap + ms(60)); lo = std::fmin(lo, b); hi = std::fmax(hi, b);
+                for (int i = 0; i < ms(60); ++i) if (o.ch[0][(size_t)(k * gap + i)] != o.ch[0][(size_t)i]) { same = false; break; }
+            }
+            spread = hi / lo; return same;
+        };
+        double s0, s1; const bool same0 = repeats(0.f, s0), same1 = repeats(100.f, s1);
+        printf("      closed hat x8: brightness spread %.3fx at Variation 0, %.3fx at 100\n", s0, s1);
+        check(same0 && !same1 && s1 < 1.6, "Variation: 0% repeats hits exactly; 100% makes every hit a little different");
+
+        // Vel>Morph: with it up, a hard snare is brighter than a soft one by much more than with it off.
+        auto velRatio = [&](float amt) {
+            OCKMFMKit a, b; a.setProgram(0); b.setProgram(0); a.set(kVelMorph, amt); b.set(kVelMorph, amt);
+            const float hard = brightness(run(a, ms(300), {{0, 37, 127}}).ch[0]), soft = brightness(run(b, ms(300), {{0, 37, 60}}).ch[0]);
+            return hard / soft;
+        };
+        const float r0 = velRatio(0.f), r1 = velRatio(100.f);
+        printf("      snare hard/soft brightness: %.2fx with Vel>Morph 0, %.2fx with 100\n", r0, r1);
+        check(r1 > r0 * 1.3f, "Vel>Morph: harder hits move further along Morph");
+
+        // Drive: fatter (more energy) on every drum, peaks never higher than without it.
+        bool okDrive = true;
+        for (int d = 0; d < kNumDrums; ++d)
+        {
+            OCKMFMKit a, b; a.setProgram(0); b.setProgram(0); b.set(kDrive, 100.f);
+            auto oa = run(a, ms(400), {{0, 36 + d, 110}}), ob = run(b, ms(400), {{0, 36 + d, 110}});
+            const float gainDb = db(std::sqrt(energy(ob.ch[0]) / energy(oa.ch[0])));
+            const float pkDb = db(peakAll(ob)) - db(peakAll(oa));
+            printf("      %-10s Drive 100%%: %+5.1f dB louder on average, peak %+5.2f dB\n", names[d], gainDb, pkDb);
+            if (gainDb < 1.5f || pkDb > 5.0f) okDrive = false;
+        }
+        check(okDrive, "Drive: every drum gets fatter (1.5 dB+ more energy) while its peak moves less than 5 dB");
     }
 
     // Demo: the groove through every preset, 4 bars each at 124 BPM.

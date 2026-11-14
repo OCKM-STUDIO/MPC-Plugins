@@ -487,7 +487,7 @@ def dump_pairs(o, indent=0):
 
 HEADINGS = {"KIT 1": ["KICK", "SNARE", "CLAP", "CLOSED HAT"],
             "KIT 2": ["OPEN HAT", "LOW TOM", "HIGH TOM", "PERC"],
-            "SHAPE": ["DRUMS 1-4", "DRUMS 5-8", "", "OUTPUT"]}
+            "SHAPE": ["DRUMS 1-4", "DRUMS 5-8", "FEEL", "OUTPUT"]}
 BADGES = {"SHAPE": (2, 0)}          # (column, row) of the empty slot that carries the name badge
 
 TINTS = {

@@ -6,16 +6,16 @@ OCKM Wave for chords and pads, OCKM Gate for pumping.
 
 ## The kit
 
-| Note | Drum | 5th knob | How it's made |
+| Note | Drum | How it's made | Morph 0% → 50% → 100% |
 |---|---|---|---|
-| 36 | Kick | Punch | Low sine with a fast pitch drop; a modulator at the same pitch adds the knock |
-| 37 | Snare | Snap | Sine with an off-pitch modulator (shell ring) plus high-passed noise (wires) |
-| 38 | Clap | Spread | A sine whose pitch is shaken by noise, making a band of noise; three quick claps then a tail |
-| 39 | Closed Hat | Metal | Three sines in a chain at odd ratios, high-passed. Chokes the open hat |
-| 40 | Open Hat | Metal | Same, longer |
-| 41 | Low Tom | Bend | Like the kick, higher, gentler bend |
-| 42 | High Tom | Bend | Same, higher |
-| 43 | Perc | Ratio | Sine with an odd-ratio modulator: rim and woodblock, bell, then clang |
+| 36 | Kick | Low sine with a fast pitch drop; a modulator adds the knock | round sub → punchy kick → hard FM boom with a zap |
+| 37 | Snare | Sine with an off-pitch modulator (shell ring) plus high-passed noise (wires) | tuned body → classic snare → noisy metallic crack |
+| 38 | Clap | A sine whose pitch is shaken by noise, making a band of noise | one tight snap → three claps → wide, lower five-clap |
+| 39 | Closed Hat | Three sines in a chain at odd ratios, high-passed. Chokes the open hat | glassy ping → classic metal → trashy wash |
+| 40 | Open Hat | Same, longer | same |
+| 41 | Low Tom | Like the kick, higher, gentler bend | soft tom → synth tom with a big bend → metallic conga |
+| 42 | High Tom | Same, higher | same |
+| 43 | Perc | Sine with an odd-ratio modulator | rim click → woodblock / cowbell → long bell |
 
 Other notes wrap onto the same eight (44 = Kick, 35 = Perc), so every pad bank and any keyboard
 plays the kit. Notes choose the drum; they don't change its pitch. Note-offs are ignored.
@@ -27,16 +27,24 @@ decides pitched (whole numbers) or metallic (odd numbers).
 ## Knobs
 
 Each drum: **Tune** (±24 semitones), **Decay** (length, scaled to suit the drum), **Tone** (FM
-amount), **Level**, and its 5th knob from the table. Velocity sets loudness (soft hits about
+amount), **Level** and **Morph** (0–100%, default 50%: blends the drum through the three characters in
+the table, so it changes what kind of drum it is). Velocity sets loudness (soft hits about
 −10 dB) and adds a little brightness.
 
-Global: **Master** (−40…+6 dB, parameter 0) and **Routing**.
+Global: **Master** (−40…+6 dB, parameter 0) and **Routing**, plus three "feel" knobs (all off at 0%):
+
+- **Variation**: every hit slightly different (pitch, brightness, length, level, Morph), so fast
+  hats and repeated percs stop sounding machine-gunned. Around 20–30% sounds played.
+- **Vel>Morph**: velocity moves Morph too. Velocity 95 leaves it alone, harder hits push towards
+  100%, softer ones pull back (up to 40% each way). Hard snares crack, ghost notes stay soft.
+- **Drive**: warm-to-gritty saturation on each drum, the kick most and the hats least. It lifts the
+  body and tail and rounds the peaks. It applies from the next hit.
 
 | Page | Q-Link columns |
 |---|---|
 | KIT 1 | Kick, Snare, Clap, Closed Hat (Tune / Decay / Tone / Level, top to bottom) |
 | KIT 2 | Open Hat, Low Tom, High Tom, Perc |
-| SHAPE | 5th knobs for drums 1–4, 5th knobs for drums 5–8, badge, Routing + Master |
+| SHAPE | Morph for drums 1–4, Morph for drums 5–8, badge + Variation / Vel>Morph / Drive, Routing + Master |
 
 ## Multi-out
 
@@ -57,8 +65,16 @@ Lo-Fi House, Acid Partner Kit. `build/demo.wav` plays the same 4-bar groove thro
 - The output never clips: a soft limiter above −2.5 dBFS keeps even all eight drums at full
   level under 0 dBFS. Normal grooves peak around −5 dBFS and never touch it.
 - CPU: a ringing drum costs 2–3 sine-table reads per sample, and a finished drum costs nothing.
-  All eight ringing at once measured 0.34% of one Apple M3 core, so roughly 2–3.5% on an MPC One.
+  All eight ringing at once measured about 0.5% of one Apple M3 core, so roughly 3–5% of an MPC One
+  core in that worst case; normal grooves stay around 1%.
 - Retriggers and the hat choke fade the old sound over 1.5 ms, so there are no clicks.
+
+## Changes
+
+- **1.2.0:** new **Variation**, **Vel>Morph** and **Drive** knobs (SHAPE page, FEEL column). All
+  default to 0%, so 1.1 projects sound exactly the same. Kits use them (Init leaves them off).
+- **1.1.0:** the fifth knob on every drum became **Morph**. Projects saved with 1.0 load fine, but
+  their drums sound different at the same knob position. Kits retuned around Morph.
 
 ## Not in v1
 

@@ -162,11 +162,11 @@
       "name": "SHAPE",
       "controls": [
         {
-          "param": "Kick Punch",
+          "param": "Kick Morph",
           "widget": "knob"
         },
         {
-          "param": "OHat Metal",
+          "param": "OHat Morph",
           "widget": "knob"
         },
         {
@@ -178,43 +178,46 @@
           "overlay": "menu"
         },
         {
-          "param": "Snare Snap",
+          "param": "Snare Morph",
           "widget": "knob"
         },
         {
-          "param": "LTom Bend",
+          "param": "LTom Morph",
           "widget": "knob"
         },
         {
-          "widget": "empty"
-        },
-        {
-          "widget": "empty"
-        },
-        {
-          "param": "Clap Spread",
-          "widget": "knob"
-        },
-        {
-          "param": "HTom Bend",
+          "param": "Variation",
           "widget": "knob"
         },
         {
           "widget": "empty"
         },
         {
-          "widget": "empty"
-        },
-        {
-          "param": "CHat Metal",
+          "param": "Clap Morph",
           "widget": "knob"
         },
         {
-          "param": "Perc Ratio",
+          "param": "HTom Morph",
+          "widget": "knob"
+        },
+        {
+          "param": "Vel>Morph",
           "widget": "knob"
         },
         {
           "widget": "empty"
+        },
+        {
+          "param": "CHat Morph",
+          "widget": "knob"
+        },
+        {
+          "param": "Perc Morph",
+          "widget": "knob"
+        },
+        {
+          "param": "Drive",
+          "widget": "knob"
         },
         {
           "param": "Master",

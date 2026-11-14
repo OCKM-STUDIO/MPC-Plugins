@@ -3,7 +3,7 @@
 > **Governing rule: keep it lean.** Eight FM drums, five knobs each, one routing switch, one
 > master level. No per-operator editing. Everything else goes in section 9 ("Not in v1").
 
-Status: **built (v1), not yet tried on the MPC.** Simon approved this spec as written (multi-out kept, these fifth knobs, bronze). Decisions taken while building are in section 12 and marked "(build)".
+Status: **v1.2 built** (Variation, Vel>Morph, Drive, section 14; Morph, section 13). v1 worked on Simon's MPC One (routing not yet tried). Simon approved this spec as written (multi-out kept, these fifth knobs, bronze). Decisions taken while building are in section 12 and marked "(build)".
 
 OCKM FM Kit is a drum-kit **instrument** for the MPC One. Each pad plays one synthesised drum
 built from two or three sine-wave "operators" that bend each other's pitch (FM). It is the
@@ -39,22 +39,34 @@ thousands of times a second. That wobble turns a pure sine into a richer tone.
 - A **fast envelope on the modulator** makes the bright part a short click at the start of the
   hit while the body rings on pure. That is the key FM drum trick.
 
-## 2. The kit (notes, recipes, the fifth knob)
+## 2. The kit (notes, recipes, Morph)
 
 Notes 36–43 play the eight drums. Every other note wraps onto the same eight (44 = Kick again,
 35 = Perc), so any pad bank or a keyboard plays the kit. Notes only choose the drum; they don't
 change its pitch (use `Tune`). Note-offs are ignored: each drum is a one-shot.
 
-| Note | Drum | 5th knob | Operators | Recipe |
-|---|---|---|---|---|
-| 36 | **Kick** | `Punch` | 2 | Carrier sine at ~48 Hz with a fast pitch drop from high to low (Punch = how far it drops). A modulator at ratio 1 with a 15 ms envelope adds the "knock" at the start (Tone = how hard). Body stays a clean sine for the sub. |
-| 37 | **Snare** | `Snap` | 2 + noise | Carrier ~185 Hz, modulator at ratio 1.6 (inharmonic, gives the drum-shell ring), short pitch drop. White noise through a cheap high-pass gives the wires (Snap = noise amount and length). |
-| 38 | **Clap** | `Spread` | 1 + noise | A carrier at ~1.2 kHz whose pitch is wobbled by **noise** instead of a sine: that's FM making band-limited noise, no filter needed (Tone = how wide the noise band is). Played as three quick bursts then a tail (Spread = gap between bursts, tight to loose). |
-| 39 | **Closed Hat** | `Metal` | 3 | Classic FM metal: op 3 wobbles op 2, which wobbles op 1, all at high, odd ratios, then a high-pass. Tone = index (shimmer to hiss); Metal = ratio (glassy to clangy). Short. **Chokes the open hat.** |
-| 40 | **Open Hat** | `Metal` | 3 | Same as the closed hat, longer decay. |
-| 41 | **Low Tom** | `Bend` | 2 | Like the kick but higher (~95 Hz) with a slower, smaller pitch drop (Bend = how much). Modulator at ratio 1 for the stick attack. |
-| 42 | **High Tom** | `Bend` | 2 | Same, ~160 Hz. Also good as a pitched techno stab. |
-| 43 | **Perc** | `Ratio` | 2 | Carrier ~800 Hz with a short-decay modulator. Ratio sweeps from woody (rim/block) through bell to clangy metal. Short decays give a rim click, longer ones a bell. |
+| Note | Drum | Operators | Recipe (at Morph 50%) |
+|---|---|---|---|
+| 36 | **Kick** | 2 | Carrier sine at ~48 Hz with a fast pitch drop. A modulator at ratio 1 with a short envelope adds the "knock" at the start (Tone = how hard). |
+| 37 | **Snare** | 2 + noise | Carrier ~185 Hz, modulator at ratio 1.6 (the shell ring), short pitch drop, plus white noise through a cheap high-pass (the wires). |
+| 38 | **Clap** | 1 + noise | A carrier at ~1.2 kHz whose pitch is wobbled by **noise**: FM making a band of noise, no filter needed (Tone = band width). Three quick claps then a tail. |
+| 39 | **Closed Hat** | 3 | FM metal: op 3 wobbles op 2, which wobbles op 1, at odd ratios, then a high-pass. Tone = index. Short. **Chokes the open hat.** |
+| 40 | **Open Hat** | 3 | Same, longer. |
+| 41 | **Low Tom** | 2 | Like the kick but higher (~95 Hz) with a slower pitch bend; modulator at ratio 1 for the stick attack. |
+| 42 | **High Tom** | 2 | Same, ~160 Hz. |
+| 43 | **Perc** | 2 | Carrier ~800 Hz with an odd-ratio modulator and a little feedback: woodblock / cowbell. |
+
+**Morph** (v1.1) blends each drum through three characters. It moves several hidden settings
+at once (ratios, pitch-drop depth and speed, how long the bright click lasts, noise, feedback):
+
+| Drum | 0% | 50% | 100% |
+|---|---|---|---|
+| Kick | round sub, almost no click | punchy classic kick | hard FM boom with a zap (big fast drop, carrier feedback) |
+| Snare | tuned, tom-like body | classic snare | noisy crack with a metallic ring |
+| Clap | one tight, higher snap | classic three-clap | wide, lower five-clap |
+| Hats | soft glassy ping (a few pure partials) | classic metal | trashy, noisy, cymbal-like wash that rings longer |
+| Toms | soft round tom | synth tom with a big bend | metallic conga / ping (ratio 3.5) |
+| Perc | rim / clave click | woodblock / cowbell | long bell / chime |
 
 Per-drum knobs (all eight):
 
@@ -63,7 +75,7 @@ Per-drum knobs (all eight):
   closed hat 15–300 ms, open hat 150–2000 ms, and so on).
 - `Tone` 0–100%. The FM index: how bright, knocky or noisy (section 1).
 - `Level` 0–100% (default 80).
-- 5th knob 0–100%, as in the table.
+- `Morph` 0–100% (default 50%), as in the table above.
 
 Velocity sets loudness (soft hits about −10 dB) and a little brightness (harder = slightly more
 Tone), like a real drum. Not adjustable in v1.
@@ -116,17 +128,21 @@ are added in a loop: index = 2 + drum × 5 + knob. New parameters only ever go o
 |---|---|---|---|---|
 | 0 | `master` | Master | −40…+6 dB | −3 dB |
 | 1 | `routing` | Routing | All Main / Kick>Aux / Hats>Aux / Split | All Main |
-| 2–6 | `kick_tune`, `kick_decay`, `kick_tone`, `kick_level`, `kick_punch` | Kick Tune / Decay / Tone / Level / Punch | ±24 st, 0–100% ×4 | 0, 50, 30, 80, 50 |
-| 7–11 | `snare_tune` … `snare_snap` | Snare … / Snare Snap | | 0, 45, 35, 80, 55 |
-| 12–16 | `clap_tune` … `clap_spread` | Clap … / Clap Spread | | 0, 45, 50, 80, 40 |
-| 17–21 | `chat_tune` … `chat_metal` | CHat … / CHat Metal | | 0, 30, 60, 70, 40 |
-| 22–26 | `ohat_tune` … `ohat_metal` | OHat … / OHat Metal | | 0, 50, 60, 65, 40 |
-| 27–31 | `ltom_tune` … `ltom_bend` | LTom … / LTom Bend | | 0, 50, 25, 75, 40 |
-| 32–36 | `htom_tune` … `htom_bend` | HTom … / HTom Bend | | 0, 50, 25, 75, 40 |
-| 37–41 | `perc_tune` … `perc_ratio` | Perc … / Perc Ratio | | 0, 30, 45, 70, 30 |
+| 2–6 | `kick_tune`, `kick_decay`, `kick_tone`, `kick_level`, `kick_punch` | Kick Tune / Decay / Tone / Level / Morph | ±24 st, 0–100% ×4 | 0, 50, 30, 80, 50 |
+| 7–11 | `snare_tune` … `snare_snap` | Snare … / Snare Morph | | 0, 45, 35, 80, 50 |
+| 12–16 | `clap_tune` … `clap_spread` | Clap … / Clap Morph | | 0, 45, 50, 80, 50 |
+| 17–21 | `chat_tune` … `chat_metal` | CHat … / CHat Morph | | 0, 30, 60, 70, 50 |
+| 22–26 | `ohat_tune` … `ohat_metal` | OHat … / OHat Morph | | 0, 50, 60, 65, 50 |
+| 27–31 | `ltom_tune` … `ltom_bend` | LTom … / LTom Morph | | 0, 50, 25, 75, 50 |
+| 32–36 | `htom_tune` … `htom_bend` | HTom … / HTom Morph | | 0, 50, 25, 75, 50 |
+| 37–41 | `perc_tune` … `perc_ratio` | Perc … / Perc Morph | | 0, 30, 45, 70, 50 |
 
-42 parameters. The 5th-knob ids are `kick_punch`, `snare_snap`, `clap_spread`, `chat_metal`,
-`ohat_metal`, `ltom_bend`, `htom_bend`, `perc_ratio`. The defaults above shipped unchanged (build).
+| 42 | `variation` | Variation | 0–100% | 0 (v1.2) |
+| 43 | `velmorph` | Vel>Morph | 0–100% | 0 (v1.2) |
+| 44 | `drive` | Drive | 0–100% | 0 (v1.2) |
+
+45 parameters (42 until v1.1; the three kit-wide knobs were added at the end so no number moved). The Morph ids are the original v1 ids, kept because ids are permanent: `kick_punch`, `snare_snap`, `clap_spread`, `chat_metal`,
+`ohat_metal`, `ltom_bend`, `htom_bend`, `perc_ratio`. Only their on-screen names changed (v1.1).
 
 ## 6. UI (three pages; every Q-Link bank is a column of four)
 
@@ -152,12 +168,12 @@ The MPC One has 4 Q-Links and 16 slots per page; each column below is one Q-Link
 
 **SHAPE** (build: renamed from CHARACTER, which is too long for the MPC's tab)
 
-| Drums 1–4 | Drums 5–8 | | Output |
+| Drums 1–4 | Drums 5–8 | Feel | Output |
 |---|---|---|---|
-| Kick Punch | OHat Metal | *OCKM FM KIT badge* | Routing (menu) |
-| Snare Snap | LTom Bend | *empty* | *empty* |
-| Clap Spread | HTom Bend | *empty* | *empty* |
-| CHat Metal | Perc Ratio | *empty* | Master (fader) |
+| Kick Morph | OHat Morph | *OCKM FM KIT badge* | Routing (menu) |
+| Snare Morph | LTom Morph | Variation | *empty* |
+| Clap Morph | HTom Morph | Vel>Morph | *empty* |
+| CHat Morph | Perc Morph | Drive | Master (fader) |
 
 Tune knobs are drawn bipolar (centre = 0).
 
@@ -232,7 +248,8 @@ I'll simplify before going further.
      says, and with only 2 outputs everything lands on Main;
    - Master at −40 dB is much quieter; parameter 0 changes cause no other side effect;
    - no NaN/denormal values; CC 120 silences everything;
-   - Tone and the 5th knob actually change the sound (output differs at 0% and 100%).
+   - Tone changes every drum; Morph changes every drum a lot (0% vs 100%: brightness or length
+     moves by 1.5× or more; printed per drum).
 4. **Demo WAV:** `build/demo.wav`, a 4-bar house/techno pattern (four-to-the-floor kick,
    offbeat open hat choked by 16th closed hats, clap on 2 and 4, perc and tom fills) played
    through each preset in turn.
@@ -260,3 +277,55 @@ listed, bronze tint.
 - (build) Tests: build 0 errors / 0 warnings, host_sim 19/19 PASS with no WARN, harness ALL PASS
   (17 checks). Spectrum check: kick and toms are pure and low (centre 170–300 Hz), snare and clap
   noisy, hats bright, perc metallic.
+
+## 13. v1.1: Morph (2026-11-14)
+
+Simon asked for a knob that "really shifts the timbre", the kind of morph control some FM drum
+machines have. Changes:
+
+- The fifth knob on every drum is now **Morph** (table in section 2). On screen it's "<Drum> Morph".
+  Its id, position and range are unchanged (`kick_punch` … `perc_ratio`), so saved projects load
+  without errors, but drums saved with v1 sound different at the same knob position. Renaming the
+  on-screen name bends the house rule "never rename a parameter". Simon chose it ("Let's call it
+  Morph"); the rule exists to protect saved values, and they're still safe.
+- New: operator **feedback** (an operator wobbling itself, from pure to buzzy to noisy), used by
+  Morph on the kick (carrier), snare and hats (top operator) and perc (carrier). It costs two
+  multiply-adds per sample.
+- The clap's Morph sets the number of claps (1 to 5) as well as their spacing and pitch.
+- The 8 kits were retuned around Morph: for example Minimal Clicks uses a single-snap clap, rim
+  perc and conga toms, Industrial Clang has everything near 100%, Acid Partner Kit has a bell perc.
+- Version 1.1.0 (`plugin.json`, `info.version` 1100).
+- Results: build 0 errors / 0 warnings; host_sim 19/19, no WARN; harness ALL PASS (17 checks, the
+  Morph check is new). Morph 0→100%: kick brightness 55 → 2359 Hz, snare 709 → 8629 Hz, clap
+  1 → 5 claps (108 → 223 ms), toms ×6.6, perc 16 → 101 ms; hats go from a pure tone (spectral
+  flatness 0.03) to noise (0.75) and ring 1.9× longer. Grooves peak −3.7 to −6.7 dBFS; everything
+  at maximum reaches −0.14 dBFS.
+- CPU: all eight ringing at maximum Decay and Tone now measures about 0.5% of an Apple M3 core
+  (was 0.34%), roughly 3–5% of an MPC One core in that worst case. That's at the top of the budget,
+  and normal grooves stay around 1%.
+
+## 14. v1.2: Variation, Vel>Morph, Drive (2026-11-14)
+
+Simon picked these from a list of next steps. Three kit-wide knobs, in the FEEL column of SHAPE
+(parameters 42–44, appended so nothing moved). All default to 0%, where the kit is sample-for-sample
+the same as 1.1, so saved projects sound exactly as before.
+
+- **Variation**: every hit is a little different. At 100%: pitch ±35 cents, Tone ±25%, Decay ±12%,
+  Level ±1.3 dB, Morph ±12%, drawn fresh per hit from the plugin's own random numbers. At 0% no
+  random numbers are drawn.
+- **Vel>Morph**: velocity also moves Morph. Velocity 95 leaves it alone; 127 adds 40% and 64 or
+  below takes 40% away at full amount (straight line between). Clamped to 0–100%.
+- **Drive**: blends in a saturated copy (smooth tanh-like curve, input boosted up to 10×, scaled so
+  full scale stays full scale). Body and tail come up, peaks round off. Share per drum: kick 100%,
+  snare and toms 80%, clap 70%, perc 60%, hats 50%. Set when a drum is hit (turning it changes the
+  next hit, not one that is ringing). At 0% the code is skipped.
+- Kits: Init all 0; Deep House 25/30/10; Warehouse 15/40/45; Minimal 10/50/0; Industrial 20/30/80;
+  Rumble 15/25/35; Lo-Fi 40/20/25; Acid Partner 15/35/30 (Variation / Vel>Morph / Drive).
+- Version 1.2.0 (`info.version` 1200).
+- Results: build 0 errors / 0 warnings; host_sim 19/19; harness ALL PASS (20 checks, 3 new).
+  Variation 100 spreads closed-hat brightness ×1.06 (0: identical hits). Vel>Morph 100 makes a hard
+  snare 8× brighter than a soft one (×1.0 when off). Drive 100: every drum +6 to +9 dB louder on
+  average; peaks between −2.9 and +4.2 dB (hats rise most, as they run quieter inside). Grooves peak
+  −4.0 to −6.1 dBFS; everything at maximum including Drive reaches −0.11 dBFS.
+- CPU: Drive adds one short sum per sample per ringing drum, within measurement noise (worst case
+  still about 0.5–0.6% of an M3 core, roughly 3–5% of an MPC One core).
