@@ -175,6 +175,7 @@ MIDI or pad triggering (the MPC doesn't send MIDI to effects), tapping a rhythm 
 | STEPS page shows steps the plugin switched on itself (Tap Rec) | Works: the switches show the right state, and one touch toggles them | none |
 | STEPS toggle switches line up with their labels and the panel art | Correct | none |
 | Tapped rhythms land where intended | No | TAP and Tap Rec taken off the GATE page; 10 presets added instead. No Tap Offset parameter. |
+| Choosing a preset moves the on-screen controls | No: the sound changed, the screen kept the old values | After any preset or state load (`reset()`), `process()` announces all 47 values to the MPC, 8 per block (`audioMasterAutomate`, the call Tap Rec proved works), then asks for a display update |
 | (Simon's request) a 1/4 rate | Added | `1/4` appended to Rate; patterns longer than a bar now span 2 or 4 bars instead of being cut off at the bar |
 
-Still to hear on hardware: the 1/4 rate and the 10 new presets.
+Still to check on hardware: the 1/4 rate, the 10 new presets, and that the screen now follows a chosen preset.

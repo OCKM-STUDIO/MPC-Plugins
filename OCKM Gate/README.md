@@ -56,7 +56,8 @@ About 0.03–0.07% of one desktop core in the SDK's host simulator, so expect we
 
 - Loads, plays and stays in time with the sequencer. The STEPS switches sit correctly next to their labels, and a step switch turns off and on with one touch.
 - **Tap Rec was dropped:** tapping on the touch screen didn't land the rhythm where it was meant to go. TAP and Tap Rec are no longer on the screen; the presets cover the common rhythms instead. The two parameters still exist inside the plugin (Tap Rec is off), so projects saved with the first build load unchanged.
-- Added after the test: the 1/4 rate and 10 more presets. These have been checked on the computer but not yet on the MPC.
+- **Presets didn't update the screen:** choosing one changed the sound, but the knobs and switches kept showing the old settings. Now, after a preset (or a saved project) loads, the plugin sends every value to the MPC, so all three pages show what the preset set. Learn a preset by picking it and looking through GATE, STEPS and LEVELS.
+- Added after the test: the 1/4 rate, 10 more presets and the screen update above. These have been checked on the computer but not yet on the MPC.
 
 ## Not in v1
 

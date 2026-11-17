@@ -201,7 +201,24 @@ int main(int argc, char** argv)
         OCKMGate t; t.setProgram(12);
         check(std::string(t.programName(12)) == "Triplet Roll" && t.getInt(kSteps) == 12 && t.getInt(kRate) == 3, "Triplet Roll sets 1/16T and 12 steps");
     }
-    // 10. Demo: every preset gating a pad chord, 2 bars each at 125 BPM.
+    // 10. Preset sync: after a preset loads, every value is announced to the MPC (8 per block) so its
+    //     screen redraws. A start (resume) also announces once; an ordinary knob move announces nothing.
+    //     (The harness calls process() directly, so it calls reset() after setProgram itself, as the
+    //     framework's internalProcess does after any preset or state load.)
+    {
+        OCKMGate a; run(a, 128 * 20, bpm, true, dc);
+        const int start = a.syncSent();
+        OCKMGate b; run(b, 128 * 20, bpm, true, dc, 128, [&](int pos) { if (pos == 128 * 10) { b.setProgram(3); b.reset(); } });
+        OCKMGate c; run(c, 128 * 20, bpm, true, dc, 128, [&](int pos) { if (pos == 128 * 10) c.set(kDepth, 40.f); });
+        OCKMGate d; run(d, 128 * 12, bpm, true, dc, 128, [&](int pos) { if (pos == 128 * 10) { d.setProgram(3); d.reset(); } });   // 2 blocks after
+        printf("      announced: start %d, start + preset %d, start + knob %d, 2 blocks after a preset %d\n",
+               start, b.syncSent(), c.syncSent(), d.syncSent());
+        check(start == kNumParams, "starting announces all 47 values once");
+        check(b.syncSent() == 2 * kNumParams, "choosing a preset announces all 47 values to the MPC");
+        check(c.syncSent() == kNumParams, "turning a knob announces nothing extra");
+        check(d.syncSent() == kNumParams + 16, "values are spread over blocks, 8 per block");
+    }
+    // 11. Demo: every preset gating a pad chord, 2 bars each at 125 BPM.
     {
         const double dbpm = 125.0; const int bar = (int)(SR * 60.0 / dbpm * 4.0);
         auto pad = [](int i) {

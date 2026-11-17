@@ -21,6 +21,11 @@
 // to "now". The press is only flagged on the UI thread; process() applies it at the exact
 // song position and tells the host which step parameters changed.
 //
+// Preset sync: the MPC doesn't redraw its screen when a preset is chosen. After a preset or
+// saved state loads (both end in reset()), process() announces every parameter's value to the
+// MPC, 8 per block, the same way the hardware-tested Tap Rec announced its steps. The screen
+// then shows what the preset set.
+//
 // Realtime: no allocation, locks or I/O in process(). Per sample: a few adds/multiplies, one
 // floor, one table lookup. The curve table is rebuilt only when Curve changes.
 
@@ -242,6 +247,7 @@ public:
         wasPlaying_ = false;
         curveValue_ = 1.0e9f;
         output_.snap(dbToGain(get(kOutput)));
+        syncFrom_.store(0, std::memory_order_relaxed);   // announce every value to the MPC (see top)
     }
 
     void parameterChanged(int index, float plainValue) override
@@ -314,6 +320,16 @@ public:
         else pos = freePos_ < loopBeats ? freePos_ : std::fmod(freePos_, loopBeats);
         wasPlaying_ = playing;
 
+        // ----- preset sync: announce values to the MPC so its screen redraws -----
+        int from = syncFrom_.load(std::memory_order_relaxed);
+        if (from < kNumParams)
+        {
+            const int to = from + kSyncPerBlock < kNumParams ? from + kSyncPerBlock : (int)kNumParams;
+            for (int i = from; i < to; ++i) { notifyHostParameterChanged(i); ++syncSent_; }
+            syncFrom_.compare_exchange_strong(from, to, std::memory_order_relaxed);
+            if (to == kNumParams) requestDisplayUpdate();
+        }
+
         // ----- Tap Rec -----
         if (tapPending_.exchange(false, std::memory_order_relaxed) && getBool(kTapRec) && playing)
             applyTap(pos, stepBeats, swing, steps);
@@ -356,7 +372,10 @@ public:
         if (!playing) freePos_ = pos;
     }
 
+    int syncSent() const { return syncSent_; }    // for the test harness
+
 private:
+    static constexpr int kSyncPerBlock = 8;
     static double barLength(const mpc::Transport& tr)
     {
         if (tr.timeSigNumerator > 0 && tr.timeSigDenominator > 0)
@@ -466,6 +485,8 @@ private:
     float curveValue_ = 1.0e9f;
     int lastStep_ = -1;
     bool wasPlaying_ = false;
+    std::atomic<int> syncFrom_{(int)kNumParams};   // next parameter to announce; kNumParams = done
+    int syncSent_ = 0;
     std::atomic<bool> tapPending_{false}, clearOnFirstTap_{false}, lastTapValue_{false}, lastTapRec_{false};
     char idBuf_[16] = {}, nameBuf_[16] = {};
 };
