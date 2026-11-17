@@ -14,8 +14,11 @@
 //           frames; Warp bends how the frame is read (Sync, Bend, Mirror, Quantize);
 //           Unison plays 1-5 detuned copies, spread left-right by Width.
 //        +  SUB: a sine one octave below (read from the same band-limited tables)
-//        -> FILTER: 12 dB state-variable LP / BP / HP, one per side
+//        -> DRIVE (soft saturation) -> FILTER: 12 dB state-variable LP / BP / HP, or at 24 dB a
+//           4-pole ladder (LP) / two state-variable stages (BP, HP); one per side -> FAT (low boost)
 //        -> x ENV 1 (amp) x velocity
+//   Two STEP LANES (A, B), shared by all notes and locked to the MPC tempo, each move one target
+//   (Cutoff, WT Pos, Warp, Res, Volume or Pitch) through a 16-step pattern of its own length.
 //   sum of voices -> Master level -> L/R
 //
 // On-screen names follow common wavetable-synth wording (WT Pos, Env1 = amp envelope,
@@ -41,6 +44,7 @@
 #include <algorithm>
 #include <cmath>
 #include <complex>
+#include <string>
 #include <vector>
 
 using mpc::floatParam; using mpc::logParam; using mpc::intParam; using mpc::choiceParam;
@@ -84,8 +88,20 @@ enum ParamIndex
     kLfoCut,       // LFO -> cutoff, semitones
     kLfoPitch,     // LFO -> pitch (vibrato), cents
     kWheelPos,     // mod wheel -> WT Pos, +-%
-    kNumParams
+    // ---- added in 1.2 (appended: never reorder) ----
+    kSlope,        // 12 dB (state-variable) / 24 dB (LP: 4-pole ladder; BP, HP: two SVFs in a row)
+    kDrive,        // saturation before the filter, %
+    kFat,          // warm low-end boost after the filter, % (up to +6 dB below about 150 Hz)
+    // Step lane A: 16 steps played in time with the MPC, moving one target.
+    kADest, kAAmt, kALen, kARate, kASmooth, kAStep1,
+    // Step lane B: same, own length and speed, so the two can drift against each other.
+    kBDest = kAStep1 + 16, kBAmt, kBLen, kBRate, kBSmooth, kBStep1,
+    kNumParams = kBStep1 + 16
 };
+
+// Step-lane targets, in the order of the "Target" menu.
+enum LaneDest { kToCutoff = 0, kToPos, kToWarp, kToRes, kToVolume, kToPitch };
+constexpr int kLaneSteps = 16;
 
 enum Warp { kWarpOff = 0, kWarpSync, kWarpBend, kWarpMirror, kWarpQuantize };
 enum VoiceMode { kPoly = 0, kMono, kLegato };
@@ -293,6 +309,9 @@ struct Settings
     float envPos = 0, envWarp = 0, envCut = 0, lfoPos = 0, lfoWarp = 0, lfoCut = 0, lfoPitch = 0, wheelPos = 0;
     float glideCoef = 1.0f;
     bool ampSusZero = false;
+    int slope = 0;
+    bool monoVoice = true;                    // one copy or Width 0: left == right, so filter once
+    float drive = 0, driveGain = 1, driveNorm = 1, fat = 0;
     float uniRatio[kMaxUnison] = {1, 1, 1, 1, 1}, uniL[kMaxUnison] = {}, uniR[kMaxUnison] = {};
     float uniMaxRatio = 1.0f;
 };
@@ -307,7 +326,10 @@ struct Voice
     float velGain = 1.0f;
     float pitch = 60.0f, target = 60.0f;      // MIDI note, gliding
     ADSR amp, mod;
-    SVF fL, fR;
+    SVF fL, fR, fL2, fR2;                     // fL2/fR2: second stage for 24 dB BP / HP
+    float ladL[4] = {}, ladR[4] = {};         // 24 dB LP ladder states
+    float ladG = 0, ladG2 = 0, ladG3 = 0, ladG4 = 0, ladA = 1, ladK = 0, ladInv = 1, ladComp = 1;
+    float fatL = 0, fatR = 0;                 // Fat: low-pass state for the low boost
     float phase[kMaxUnison] = {};
     float subPhase = 0.0f;
     float pos = 0.0f;                         // position at the end of the last control step
@@ -365,6 +387,27 @@ public:
         addParam(floatParam("lfocut", "LFO1>Cutoff", 0.0f, 48.0f, 0.0f, "st", 0));
         addParam(floatParam("lfopitch", "LFO1>Pitch", 0.0f, 100.0f, 0.0f, "ct", 0));
         addParam(floatParam("wheelpos", "Wheel>WT Pos", -100.0f, 100.0f, 0.0f, "%", 0));
+        // ---- 1.2 ----
+        addParam(choiceParam("slope", "Slope", {"12 dB", "24 dB"}, 0));
+        addParam(floatParam("drive", "Drive", 0.0f, 100.0f, 0.0f, "%", 0));
+        addParam(floatParam("fat", "Fat", 0.0f, 100.0f, 0.0f, "%", 0));
+        // Default patterns: lane A a busy rhythm, lane B a rising ramp. Both do nothing until
+        // their Amount is turned away from 0.
+        static const float kDefA[kLaneSteps] = {100, 25, 60, 10, 80, 20, 45, 0, 100, 35, 70, 15, 90, 5, 55, 30};
+        static const float kDefB[kLaneSteps] = {0, 7, 13, 20, 27, 33, 40, 47, 53, 60, 67, 73, 80, 87, 93, 100};
+        for (int lane = 0; lane < 2; ++lane)
+        {
+            const std::string L = lane == 0 ? "A" : "B", id = lane == 0 ? "seqa" : "seqb";
+            addParam(choiceParam((id + "dest").c_str(), (L + " Target").c_str(),
+                                 {"Cutoff", "WT Pos", "Warp", "Res", "Volume", "Pitch"}, lane == 0 ? kToCutoff : kToPos));
+            addParam(floatParam((id + "amt").c_str(), (L + " Amount").c_str(), -100.0f, 100.0f, 0.0f, "%", 0));
+            addParam(intParam((id + "len").c_str(), (L + " Length").c_str(), 1, kLaneSteps, kLaneSteps));
+            addParam(choiceParam((id + "rate").c_str(), (L + " Rate").c_str(), divisionNames(), kDivisionSixteenth));
+            addParam(floatParam((id + "smooth").c_str(), (L + " Smooth").c_str(), 0.0f, 100.0f, lane == 0 ? 20.0f : 60.0f, "%", 0));
+            for (int i = 0; i < kLaneSteps; ++i)
+                addParam(floatParam((id + std::to_string(i + 1)).c_str(), (L + std::to_string(i + 1)).c_str(),
+                                    0.0f, 100.0f, lane == 0 ? kDefA[i] : kDefB[i], "%", 0));
+        }
         addPrograms();
         (void)bank();                 // build the tables now, never on the audio thread
     }
@@ -376,7 +419,9 @@ public:
         {
             v.amp.setSampleRate(sampleRate); v.mod.setSampleRate(sampleRate);
             v.fL.setSampleRate(sampleRate); v.fR.setSampleRate(sampleRate);
+            v.fL2.setSampleRate(sampleRate); v.fR2.setSampleRate(sampleRate);
         }
+        fatCoef_ = 1.0f - std::exp(-2.0f * kPi * 150.0f / sr_);
         lfo_.setSampleRate(sampleRate);
         output_.setTime(20.0f, sampleRate);
         output_.snap(dbToGain(get(kOutput)));
@@ -387,7 +432,8 @@ public:
     {
         for (Voice& v : voices_)
         {
-            v.amp.reset(); v.mod.reset(); v.fL.reset(); v.fR.reset();
+            v.amp.reset(); v.mod.reset(); v.fL.reset(); v.fR.reset(); v.fL2.reset(); v.fR2.reset();
+            clearLadder(v);
             v.active = false; v.fresh = true; v.fade = 1.0f; v.fadeStep = 0.0f;
         }
         alloc_.reset();
@@ -395,11 +441,19 @@ public:
         lfo_.reset();
         lastMode_ = -1;
         wheel_ = wheelTarget_ = 0.0f;
+        laneBeats_ = 0.0;
+        for (int l = 0; l < 2; ++l) { laneOut_[l] = 0.0f; laneDestPrev_[l] = -1; }
+        laneGain_ = laneGainPrev_ = 1.0f;
     }
 
     void process(mpc::ProcessContext& ctx) override
     {
         readSettings(ctx);
+        // Step-lane clock, in beats: follows the MPC's song position while it plays; otherwise it
+        // runs from the first note after silence (see noteOn).
+        bpm_ = ctx.transport.tempoValid ? ctx.transport.bpm : 120.0;
+        playing_ = ctx.transport.playing && ctx.transport.ppqValid;
+        if (playing_) laneBeats_ = ctx.transport.ppqPos;
         float* outL = ctx.outputs[0];
         float* outR = ctx.numOutputs > 1 ? ctx.outputs[1] : nullptr;
         int pos = 0, ev = 0;
@@ -453,6 +507,7 @@ private:
         const int n = s.unison;
         const float detune = get(kDetune) * 0.01f, spread = get(kSpread) * 0.01f;
         const float uniGain = 1.0f / std::sqrt((float)n);
+        s.monoVoice = n == 1 || spread <= 0.0f;
         s.uniMaxRatio = 1.0f;
         for (int c = 0; c < n; ++c)
         {
@@ -479,6 +534,26 @@ private:
         else lfo_.setFrequency(get(kLfoRate));
 
         output_.setTarget(dbToGain(get(kOutput)));
+
+        // Filter character.
+        s.slope = clamp(getInt(kSlope), 0, 1);
+        s.drive = get(kDrive) * 0.01f;
+        s.driveGain = 1.0f + 9.0f * s.drive;                         // 1x .. 10x into the saturator
+        s.driveNorm = (1.0f - 0.35f * s.drive) / softClip(s.driveGain);    // peaks stay put, a bit quieter
+        s.fat = get(kFat) * 0.01f;
+
+        // Step lanes.
+        for (int l = 0; l < 2; ++l)
+        {
+            const int base = l == 0 ? kADest : kBDest;
+            Lane& ln = lanes_[l];
+            ln.dest = clamp(getInt(base), 0, 5);
+            ln.amt = get(base + 1) * 0.01f;
+            ln.len = clamp(getInt(base + 2), 1, kLaneSteps);
+            ln.beats = divisionBeats(getInt(base + 3));
+            ln.smooth = get(base + 4) * 0.01f;
+            for (int i = 0; i < kLaneSteps; ++i) ln.step[i] = get(base + 5 + i) * 0.01f;
+        }
 
         if (s.mode != lastMode_)      // switching Poly / Mono / Legato: let everything ring out
         {
@@ -519,7 +594,8 @@ private:
             // One copy starts at phase 0 (punchy, repeatable); stacks start at random phases.
             for (int c = 0; c < kMaxUnison; ++c) v.phase[c] = set_.unison == 1 ? 0.0f : rng_.nextFloat();
             v.subPhase = 0.0f;
-            v.fL.reset(); v.fR.reset();
+            v.fL.reset(); v.fR.reset(); v.fL2.reset(); v.fR2.reset();
+            clearLadder(v);
             v.fresh = true;
         }
         if (retrigger || wasSilent) { v.amp.noteOn(); v.mod.noteOn(); v.peaked = false; }
@@ -528,6 +604,7 @@ private:
 
     void noteOn(int note, int vel)
     {
+        if (!playing_ && activeVoices() == 0) laneBeats_ = 0.0;     // free-running lanes start on the first note
         if (set_.mode == kPoly)
         {
             const int prev = alloc_.lastNote();
@@ -586,6 +663,7 @@ private:
         const float lfo = lfo_.last();
         for (int i = 0; i < n; ++i) lfo_.process();
         wheel_ += (wheelTarget_ - wheel_) * 0.2f;
+        updateLanes(n);
 
         float mixL[kCtrl] = {}, mixR[kCtrl] = {};
         for (int vi = 0; vi < kVoices; ++vi)
@@ -593,13 +671,14 @@ private:
             Voice& v = voices_[vi];
             if (!v.active) continue;
             control(v, lfo, n);
+            const int fp = s.slope == 0 ? kF12 : (s.ftype == 0 ? kFLadder : kF24);
             switch (s.warp)
             {
-                case kWarpSync:     renderVoice<kWarpSync>(v, mixL, mixR, n); break;
-                case kWarpBend:     renderVoice<kWarpBend>(v, mixL, mixR, n); break;
-                case kWarpMirror:   renderVoice<kWarpMirror>(v, mixL, mixR, n); break;
-                case kWarpQuantize: renderVoice<kWarpQuantize>(v, mixL, mixR, n); break;
-                default:            renderVoice<kWarpOff>(v, mixL, mixR, n); break;
+                case kWarpSync:     renderFilter<kWarpSync>(fp, v, mixL, mixR, n); break;
+                case kWarpBend:     renderFilter<kWarpBend>(fp, v, mixL, mixR, n); break;
+                case kWarpMirror:   renderFilter<kWarpMirror>(fp, v, mixL, mixR, n); break;
+                case kWarpQuantize: renderFilter<kWarpQuantize>(fp, v, mixL, mixR, n); break;
+                default:            renderFilter<kWarpOff>(fp, v, mixL, mixR, n); break;
             }
             if (v.amp.level() > 0.5f) v.peaked = true;               // the attack has been through
             const bool silentPluck = v.peaked && s.ampSusZero && v.amp.level() < 0.0005f;   // decayed to nothing, key still down
@@ -609,9 +688,13 @@ private:
                 if (s.mode == kPoly) alloc_.voiceFinished(vi);
             }
         }
+        const float gStep = (laneGain_ - laneGainPrev_) / (float)n;
+        float lg = laneGainPrev_;
+        laneGainPrev_ = laneGain_;
         for (int i = 0; i < n; ++i)
         {
-            const float g = output_.process();
+            lg += gStep;
+            const float g = output_.process() * lg;
             const float l = sanitize(mixL[i] * g), r = sanitize(mixR[i] * g);
             if (outR) { outL[i] += l; outR[i] += r; } else outL[i] += 0.5f * (l + r);
         }
@@ -626,18 +709,18 @@ private:
         for (int i = 0; i < n; ++i) v.mod.process();
 
         v.pitch += (v.target - v.pitch) * s.glideCoef;
-        const float semis = v.pitch + 12.0f * (float)s.octave + alloc_.bendSemitones() + s.lfoPitch * lfo;
+        const float semis = v.pitch + 12.0f * (float)s.octave + alloc_.bendSemitones() + s.lfoPitch * lfo + mod_.pitch;
         const float hz = 440.0f * std::exp2((semis - 69.0f) * (1.0f / 12.0f));
         for (int c = 0; c < s.unison; ++c) v.inc[c] = std::min(hz * s.uniRatio[c] / sr_, 0.49f);
         v.subInc = std::min(0.5f * hz / sr_, 0.49f);
 
         // WT Pos: knob + Env2 + LFO + mod wheel, ramped across the step.
-        const float pos = clamp(s.position + s.envPos * menv + s.lfoPos * lfo + s.wheelPos * wheel_, 0.0f, 1.0f);
+        const float pos = clamp(s.position + s.envPos * menv + s.lfoPos * lfo + s.wheelPos * wheel_ + mod_.pos, 0.0f, 1.0f);
         if (v.fresh) { v.pos = pos; v.fresh = false; }
         v.posStep = (pos - v.pos) / (float)n;
 
         // Warp amount, and how much it raises the highest harmonic (to pick a duller mip level).
-        const float w = clamp(s.warpAmt + s.envWarp * menv + s.lfoWarp * lfo, 0.0f, 1.0f);
+        const float w = clamp(s.warpAmt + s.envWarp * menv + s.lfoWarp * lfo + mod_.warp, 0.0f, 1.0f);
         float harmonicFactor = 1.0f;
         switch (s.warp)
         {
@@ -666,9 +749,95 @@ private:
         v.subTab = b.frame(0, subLevel, 0);             // Shapes frame 0 = a pure sine
 
         // Filter: cutoff + key tracking (around middle C) + mod env + LFO, in semitones.
-        const float cutSemis = s.keyTrack * (v.pitch + 12.0f * (float)s.octave - 60.0f) + s.envCut * menv + s.lfoCut * lfo;
+        const float cutSemis = s.keyTrack * (v.pitch + 12.0f * (float)s.octave - 60.0f) + s.envCut * menv + s.lfoCut * lfo
+                             + mod_.cut;
         const float cut = clamp(s.cutoff * std::exp2(cutSemis * (1.0f / 12.0f)), 20.0f, 0.45f * sr_);
-        v.fL.set(cut, s.reso); v.fR.set(cut, s.reso);
+        const float reso = clamp(s.reso + mod_.res, 0.0f, 0.95f);
+        if (s.slope == 1 && s.ftype == 0)
+        {
+            // 4-pole ladder (zero-delay feedback, solved per sample; one soft clip in the loop).
+            const float g = std::tan(kPi * cut / sr_);
+            v.ladG = g / (1.0f + g); v.ladA = 1.0f - v.ladG;
+            v.ladG2 = v.ladG * v.ladG; v.ladG3 = v.ladG2 * v.ladG; v.ladG4 = v.ladG3 * v.ladG;
+            v.ladK = reso * 4.0f;                                  // Res 100% -> k 3.8, just short of whistling
+            v.ladInv = 1.0f / (1.0f + v.ladK * v.ladG4);
+            v.ladComp = 1.0f + 0.5f * v.ladK;                      // gives back part of the bass that resonance takes
+            for (int i = 0; i < 4; ++i) { v.ladL[i] = flushDenormal(v.ladL[i]); v.ladR[i] = flushDenormal(v.ladR[i]); }
+        }
+        else
+        {
+            v.fL.set(cut, reso); v.fR.set(cut, reso);
+            if (s.slope == 1) { v.fL2.set(cut, 0.0f); v.fR2.set(cut, 0.0f); }
+        }
+        v.fatL = flushDenormal(v.fatL); v.fatR = flushDenormal(v.fatR);
+    }
+
+    static void clearLadder(Voice& v)
+    {
+        for (int i = 0; i < 4; ++i) v.ladL[i] = v.ladR[i] = 0.0f;
+        v.fatL = v.fatR = 0.0f;
+    }
+
+    static inline float ladder(float* st, float x, const Voice& v)
+    {
+        const float S = v.ladA * (v.ladG3 * st[0] + v.ladG2 * st[1] + v.ladG * st[2] + st[3]);
+        const float y4 = (v.ladG4 * x + S) * v.ladInv;            // the loop's output, solved without delay
+        float u = x - v.ladK * y4;
+        u = 1.5f * softClip(u * (1.0f / 1.5f));                    // the ladder's input clip: keeps it round and bounded
+        for (int i = 0; i < 4; ++i)
+        {
+            const float t = (u - st[i]) * v.ladG;
+            const float y = t + st[i];
+            st[i] = y + t;
+            u = y;
+        }
+        return u;
+    }
+
+    // Step lanes: once per control step, work out where each lane is and what it adds.
+    void updateLanes(int n)
+    {
+        mod_ = LaneMod();
+        float gain = 1.0f;
+        const double beatsPerSample = bpm_ / 60.0 / (double)sr_;
+        for (int l = 0; l < 2; ++l)
+        {
+            const Lane& ln = lanes_[l];
+            const double pos = laneBeats_ / (double)ln.beats;
+            long long idx = (long long)std::floor(pos) % ln.len;
+            if (idx < 0) idx += ln.len;
+            const float st = ln.step[idx], a = ln.amt;
+            float target = 0.0f;
+            switch (ln.dest)
+            {
+                case kToCutoff: target = st * a * 48.0f; break;                         // up to 4 octaves
+                case kToPos:    target = st * a; break;
+                case kToWarp:   target = st * a; break;
+                case kToRes:    target = st * a * 0.95f; break;
+                case kToVolume: target = a >= 0.0f ? 1.0f - a * (1.0f - st) : 1.0f + a * st; break;   // a gate
+                case kToPitch:  target = std::round(st * a * 12.0f); break;             // whole semitones, up to an octave
+                default: break;
+            }
+            // Smooth: 0% = a quick 1 ms ramp (no clicks), 100% = half a step to settle.
+            const float stepSec = (float)(ln.beats * 60.0 / bpm_);
+            const float tau = std::max(0.001f, ln.smooth * 0.5f * stepSec);
+            const float coef = 1.0f - std::exp(-(float)n / (tau * sr_));
+            if (laneDestPrev_[l] != ln.dest) { laneOut_[l] = ln.dest == kToVolume ? 1.0f : 0.0f; laneDestPrev_[l] = ln.dest; }
+            laneOut_[l] += (target - laneOut_[l]) * coef;
+            const float o = laneOut_[l];
+            switch (ln.dest)
+            {
+                case kToCutoff: mod_.cut += o; break;
+                case kToPos:    mod_.pos += o; break;
+                case kToWarp:   mod_.warp += o; break;
+                case kToRes:    mod_.res += o; break;
+                case kToVolume: gain *= clamp(o, 0.0f, 1.0f); break;
+                case kToPitch:  mod_.pitch += o; break;
+                default: break;
+            }
+        }
+        laneGain_ = gain;
+        laneBeats_ += beatsPerSample * (double)n;
     }
 
     static inline float readAt(const float* t, int size, float ph)
@@ -689,13 +858,25 @@ private:
         return a + ff * (b - a);
     }
 
+    // Filter paths, chosen once per control step so the per-sample loop has no filter branches.
+    enum { kF12 = 0, kF24, kFLadder };
     template <int W>
+    void renderFilter(int fp, Voice& v, float* mixL, float* mixR, int n)
+    {
+        if (fp == kFLadder) renderVoice<W, kFLadder>(v, mixL, mixR, n);
+        else if (fp == kF24) renderVoice<W, kF24>(v, mixL, mixR, n);
+        else renderVoice<W, kF12>(v, mixL, mixR, n);
+    }
+
+    template <int W, int F>
     void renderVoice(Voice& v, float* mixL, float* mixR, int n)
     {
         const Settings& s = set_;
         const int size = v.size, stride = v.frameStride, uni = s.unison;
         const float warpA = v.warpA, warpB = v.warpB, warpC = v.warpC;
         const float gain = kVoiceGain * v.velGain;
+        const bool drive = s.drive > 0.0f, fat = s.fat > 0.0f, mono = s.monoVoice;
+        const float driveGain = s.driveGain, driveNorm = s.driveNorm, fatAmt = s.fat, fatCoef = fatCoef_;
         float pos = v.pos;
         for (int i = 0; i < n; ++i)
         {
@@ -736,13 +917,30 @@ private:
                 const float sb = s.sub * readAt(v.subTab, v.subSize, v.subPhase);
                 sumL += sb; sumR += sb;
             }
-            const float l = v.fL.process(sumL, s.ftype), r = v.fR.process(sumR, s.ftype);
+            // Drive -> filter -> Fat.
+            if (drive) { sumL = softClip(sumL * driveGain) * driveNorm; if (!mono) sumR = softClip(sumR * driveGain) * driveNorm; }
+            float l, r;
+            if (F == kFLadder) l = ladder(v.ladL, sumL * v.ladComp, v);
+            else { l = v.fL.process(sumL, s.ftype); if (F == kF24) l = v.fL2.process(l, s.ftype); }
+            if (fat) { v.fatL += (l - v.fatL) * fatCoef; l += fatAmt * v.fatL; }
+            if (mono) r = l;
+            else
+            {
+                if (F == kFLadder) r = ladder(v.ladR, sumR * v.ladComp, v);
+                else { r = v.fR.process(sumR, s.ftype); if (F == kF24) r = v.fR2.process(r, s.ftype); }
+                if (fat) { v.fatR += (r - v.fatR) * fatCoef; r += fatAmt * v.fatR; }
+            }
             float g = v.amp.process() * gain;
             if (v.fadeStep > 0.0f) { v.fade -= v.fadeStep; if (v.fade < 0.0f) v.fade = 0.0f; g *= v.fade; }
             mixL[i] += l * g;
             mixR[i] += r * g;
         }
         v.pos = clamp(pos, 0.0f, 1.0f);
+        if (mono)          // keep the right side's filter in step, so turning Width up later doesn't click
+        {
+            v.fR = v.fL; v.fR2 = v.fL2; v.fatR = v.fatL;
+            for (int i = 0; i < 4; ++i) v.ladR[i] = v.ladL[i];
+        }
     }
 
     // ----- presets ------------------------------------------------------------
@@ -751,7 +949,7 @@ private:
     void addPrograms()
     {
         struct KV { int i; float v; };
-        auto program = [this](const char* name, std::initializer_list<KV> kv)
+        auto program = [this](const char* name, std::vector<KV> kv)
         {
             std::vector<float> v((size_t)numParams());
             for (int i = 0; i < numParams(); ++i) v[(size_t)i] = param(i).def;
@@ -882,6 +1080,64 @@ private:
         program("48 Trance Gate", {{kPosition, 67}, {kUnison, 2}, {kDetune, 15}, {kCutoff, 400}, {kReso, 20},
                                    {kLfoShape, SQR}, {kLfoSync, 1}, {kLfoDiv, kDiv16}, {kLfoCut, 36}, {kAAtk, 10},
                                    {kASus, 100}, {kARel, 300}});
+
+        // 49-56 (1.2): the 24 dB ladder, Drive and Fat, and the two step lanes. Hold one key (or a
+        // chord) and the lanes play the movement in time with the MPC.
+        // with(kv, first step, {16 values}) adds a lane's step pattern to a preset.
+        auto with = [](std::vector<KV> kv, int first, std::initializer_list<float> st)
+        {
+            int i = 0;
+            for (float x : st) kv.push_back({first + i++, x});
+            return kv;
+        };
+        const float kDiv8D = 9;
+        // Semitones for a Pitch lane at Amount 100%: a step of n/12 plays n semitones up.
+        auto st = [](float semis) { return semis * 100.0f / 12.0f; };
+        program("49 Ladder Bass", {{kPosition, 67}, {kSlope, 1}, {kVoiceMode, kMono}, {kOctave, -1}, {kCutoff, 300},
+                                   {kReso, 60}, {kDrive, 40}, {kFat, 60}, {kEnvCut, 36}, {kMAtk, 1}, {kMDec, 220},
+                                   {kSub, 20}, {kASus, 100}, {kARel, 80}});
+        program("50 Seq Filter Funk", with({{kPosition, 67}, {kSlope, 1}, {kVoiceMode, kMono}, {kOctave, -1}, {kGlide, 65},
+                                            {kCutoff, 350}, {kReso, 55}, {kDrive, 30}, {kFat, 40}, {kASus, 100}, {kARel, 80},
+                                            {kADest, kToCutoff}, {kAAmt, 80}, {kASmooth, 10}},
+                                           kAStep1, {100, 10, 60, 0, 90, 20, 40, 0, 100, 0, 70, 30, 50, 0, 80, 20}));
+        program("51 Polymeter Pad", with(with({{kTable, VOWELS}, {kPosition, 40}, {kUnison, 3}, {kDetune, 18}, {kSpread, 90},
+                                                {kCutoff, 1500}, {kReso, 25}, {kAAtk, 300}, {kADec, 1000}, {kASus, 90}, {kARel, 1500},
+                                                {kADest, kToCutoff}, {kAAmt, 50}, {kALen, 12}, {kASmooth, 40},
+                                                {kBDest, kToPos}, {kBAmt, 60}, {kBLen, 7}, {kBSmooth, 50}},
+                                               kAStep1, {80, 20, 50, 0, 100, 30, 60, 10, 90, 40, 70, 0, 50, 50, 50, 50}),
+                                          kBStep1, {0, 100, 30, 70, 10, 90, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
+        program("52 Pitch Lane Riff", with(with({{kTable, HARM}, {kPosition, 55}, {kSlope, 1}, {kCutoff, 1800}, {kReso, 45},
+                                                  {kDrive, 25}, {kLfoShape, SINE}, {kLfoRate, 0.1f}, {kLfoCut, 18},
+                                                  {kASus, 100}, {kARel, 60},
+                                                  {kADest, kToVolume}, {kAAmt, 100}, {kASmooth, 5},
+                                                  {kBDest, kToPitch}, {kBAmt, 100}, {kBSmooth, 0}},
+                                                 kAStep1, {100, 0, 100, 100, 0, 100, 0, 100, 100, 0, 100, 0, 100, 100, 0, 100}),
+                                            kBStep1, {0, 0, st(7), 0, st(10), 0, st(7), st(12), 0, st(3), st(5), 0, st(7), st(10), st(12), st(5)}));
+        program("53 Gate Build", with(with({{kPosition, 67}, {kUnison, 5}, {kDetune, 35}, {kSpread, 100}, {kCutoff, 600},
+                                            {kReso, 20}, {kAAtk, 10}, {kASus, 100}, {kARel, 300},
+                                            {kADest, kToVolume}, {kAAmt, 100}, {kASmooth, 5},
+                                            {kBDest, kToCutoff}, {kBAmt, 60}, {kBRate, kDiv1}, {kBSmooth, 100}},
+                                           kAStep1, {100, 0, 100, 100, 0, 100, 0, 100, 100, 0, 100, 0, 100, 100, 0, 100}),
+                                      kBStep1, {0, 6, 12, 18, 25, 31, 37, 44, 50, 56, 62, 69, 75, 81, 88, 100}));
+        program("54 Dub Techno Seq", with(with({{kPosition, 67}, {kFType, 1}, {kCutoff, 700}, {kReso, 35}, {kUnison, 2},
+                                                {kDetune, 12}, {kVelAmp, 70}, {kAAtk, 1}, {kADec, 400}, {kASus, 0}, {kARel, 500},
+                                                {kFat, 30},
+                                                {kADest, kToCutoff}, {kAAmt, 50}, {kALen, 7}, {kARate, kDiv8D}, {kASmooth, 30},
+                                                {kBDest, kToRes}, {kBAmt, 40}, {kBLen, 5}, {kBSmooth, 20}},
+                                               kAStep1, {20, 90, 40, 100, 0, 60, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0}),
+                                          kBStep1, {100, 20, 60, 0, 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
+        program("55 Acid Seq", with(with({{kPosition, 67}, {kSlope, 1}, {kVoiceMode, kMono}, {kOctave, -1}, {kCutoff, 220},
+                                          {kReso, 80}, {kDrive, 60}, {kFat, 30}, {kASus, 100}, {kARel, 60}, {kOutput, -5},
+                                          {kADest, kToCutoff}, {kAAmt, 70}, {kASmooth, 0},
+                                          {kBDest, kToPitch}, {kBAmt, 100}, {kBSmooth, 15}},
+                                         kAStep1, {60, 10, 100, 20, 40, 0, 80, 30, 50, 10, 90, 0, 70, 20, 100, 40}),
+                                    kBStep1, {0, 0, st(12), 0, st(3), 0, st(10), st(12), 0, st(7), 0, st(3), st(5), 0, st(12), st(10)}));
+        program("56 Wavetable Walk", with(with({{kTable, FM}, {kPosition, 10}, {kWarp, kWarpBend}, {kUnison, 2}, {kDetune, 10},
+                                                {kSpread, 80}, {kCutoff, 9000}, {kAAtk, 5}, {kASus, 90}, {kARel, 600},
+                                                {kADest, kToPos}, {kAAmt, 90}, {kALen, 8}, {kARate, kDiv8}, {kASmooth, 70},
+                                                {kBDest, kToWarp}, {kBAmt, 60}, {kBLen, 6}, {kBSmooth, 30}},
+                                               kAStep1, {0, 40, 15, 80, 30, 100, 60, 20, 0, 0, 0, 0, 0, 0, 0, 0}),
+                                          kBStep1, {0, 50, 100, 20, 70, 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
     }
 
     static mpc::PluginInfo makeInfo()
@@ -890,7 +1146,7 @@ private:
         info.name         = "OCKM Wave";
         info.vendor       = "OCKM";    // must match plugin.json "manufacturer"
         info.uniqueId     = MPC_FOURCC('O', '5', '7', 'W');   // must match plugin.json "uid"
-        info.version      = 1000;      // 1.0.0.0
+        info.version      = 1200;      // 1.2.0.0
         info.isInstrument = true;
         info.numInputs    = 0;
         info.numOutputs   = 2;
@@ -906,6 +1162,16 @@ private:
     Xorshift32 rng_{0x51A7E5u};
     float sr_ = 44100.0f, wheel_ = 0.0f, wheelTarget_ = 0.0f;
     int stack_[kStack] = {}, stackN_ = 0, lastMode_ = -1;
+
+    // Step lanes (shared by every note, like the LFO).
+    struct Lane { int dest = 0, len = 16; float amt = 0, smooth = 0, beats = 0.25f; float step[kLaneSteps] = {}; };
+    struct LaneMod { float cut = 0, pos = 0, warp = 0, res = 0, pitch = 0; };
+    Lane lanes_[2];
+    LaneMod mod_;
+    float laneOut_[2] = {}, laneGain_ = 1.0f, laneGainPrev_ = 1.0f, fatCoef_ = 0.02f;
+    int laneDestPrev_[2] = {-1, -1};
+    double laneBeats_ = 0.0, bpm_ = 120.0;
+    bool playing_ = false;
 };
 
 } // namespace

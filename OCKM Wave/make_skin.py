@@ -14,7 +14,7 @@ SDK is the MPC Plugin SDK folder ($MPC_SDK, default /Users/simon/Projects/mpc-pl
 
 What it does:
   1. Draws the artwork into assets/ (build.py copies assets/ into Plugin Skins/):
-       panel_osc.png, panel_fltenv.png, panel_lfo.png  worn, scratched brushed-aluminium panels (1280 x 628)
+       panel_<page>.png (one per page)  worn, scratched brushed-aluminium panels (1280 x 628)
                                           with printed section frames, headings and knob scales
        knob.png                           127-frame film strip: black knurled knob, spun-metal cap
        toggle_on.png, toggle_off.png      worn plastic switches (on = lit amber)
@@ -145,6 +145,7 @@ FONT = {
     "0": ["01110", "10001", "10011", "10101", "11001", "10001", "01110"],
     "1": ["00100", "01100", "00100", "00100", "00100", "00100", "01110"],
     "2": ["01110", "10001", "00001", "00010", "00100", "01000", "11111"],
+    "4": ["00010", "00110", "01010", "10010", "11111", "00010", "00010"],
     "3": ["11110", "00001", "00001", "01110", "00001", "00001", "11110"],
     " ": ["00000"] * 7,
 }
@@ -482,10 +483,14 @@ def dump_pairs(o, indent=0):
     return json.dumps(o)
 
 
+BEATS = ["BEAT 1", "BEAT 2", "BEAT 3", "BEAT 4"]       # step pages: each column is one beat (4 steps)
 HEADINGS = {"OSC": ["OSC", "UNISON", "VOICING", "MASTER"],
-            "FLT+ENV": ["FILTER", "ENV 1 AMP", "ENV 2", "ENV 2 TO"],
-            "LFO": ["LFO 1", "LFO 1 TO", "WHEEL TO", ""]}
-BADGES = {"OSC": (3, 2), "FLT+ENV": (3, 3), "LFO": (2, 2)}          # (column, row) of the empty slot that carries the name badge
+            "FILTER": ["FILTER", "CHARACTER", "", ""],
+            "ENV": ["ENV 1 AMP", "ENV 2", "ENV 2 TO", ""],
+            "LFO": ["LFO 1", "LFO 1 TO", "WHEEL TO", ""],
+            "SEQ": ["LANE A", "LANE B", "SMOOTH", ""],
+            "STEPS A": BEATS, "STEPS B": BEATS}
+BADGES = {"OSC": (3, 2), "FILTER": (3, 1), "ENV": (3, 1), "LFO": (2, 2), "SEQ": (3, 1)}          # (column, row) of the empty slot that carries the name badge
 
 TINTS = {
     # rgb: colour of the metal; lum: brightness shift; plate: label strips; background: overlay colour

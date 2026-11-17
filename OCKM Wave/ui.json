@@ -82,12 +82,68 @@
       ]
     },
     {
-      "name": "FLT+ENV",
+      "name": "FILTER",
       "controls": [
         {
           "param": "Filter Type",
           "widget": "switch"
         },
+        {
+          "param": "Drive",
+          "widget": "knob"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "param": "Slope",
+          "widget": "switch"
+        },
+        {
+          "param": "Fat",
+          "widget": "knob"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "param": "Cutoff",
+          "widget": "knob"
+        },
+        {
+          "param": "Key Trk",
+          "widget": "knob"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "param": "Res",
+          "widget": "knob"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "widget": "empty"
+        }
+      ]
+    },
+    {
+      "name": "ENV",
+      "controls": [
         {
           "param": "Env1 Attack",
           "widget": "fader"
@@ -97,13 +153,12 @@
           "widget": "fader"
         },
         {
-          "param": "Env2>WT Pos",
+          "param": "Env2>Cutoff",
           "widget": "knob",
           "polarity": "bipolar"
         },
         {
-          "param": "Cutoff",
-          "widget": "knob"
+          "widget": "empty"
         },
         {
           "param": "Env1 Decay",
@@ -114,13 +169,12 @@
           "widget": "fader"
         },
         {
-          "param": "Env2>Warp",
+          "param": "Env2>WT Pos",
           "widget": "knob",
           "polarity": "bipolar"
         },
         {
-          "param": "Res",
-          "widget": "knob"
+          "widget": "empty"
         },
         {
           "param": "Env1 Sustain",
@@ -131,13 +185,12 @@
           "widget": "fader"
         },
         {
-          "param": "Env2>Cutoff",
+          "param": "Env2>Warp",
           "widget": "knob",
           "polarity": "bipolar"
         },
         {
-          "param": "Key Trk",
-          "widget": "knob"
+          "widget": "empty"
         },
         {
           "param": "Env1 Release",
@@ -146,6 +199,9 @@
         {
           "param": "Env2 Release",
           "widget": "fader"
+        },
+        {
+          "widget": "empty"
         },
         {
           "widget": "empty"
@@ -222,6 +278,213 @@
         },
         {
           "widget": "empty"
+        }
+      ]
+    },
+    {
+      "name": "SEQ",
+      "controls": [
+        {
+          "param": "A Target",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "B Target",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "A Smooth",
+          "widget": "knob"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "param": "A Amount",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "B Amount",
+          "widget": "knob",
+          "polarity": "bipolar"
+        },
+        {
+          "param": "B Smooth",
+          "widget": "knob"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "param": "A Length",
+          "widget": "knob"
+        },
+        {
+          "param": "B Length",
+          "widget": "knob"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "param": "A Rate",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "param": "B Rate",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "widget": "empty"
+        }
+      ]
+    },
+    {
+      "name": "STEPS A",
+      "controls": [
+        {
+          "param": "A1",
+          "widget": "knob"
+        },
+        {
+          "param": "A5",
+          "widget": "knob"
+        },
+        {
+          "param": "A9",
+          "widget": "knob"
+        },
+        {
+          "param": "A13",
+          "widget": "knob"
+        },
+        {
+          "param": "A2",
+          "widget": "knob"
+        },
+        {
+          "param": "A6",
+          "widget": "knob"
+        },
+        {
+          "param": "A10",
+          "widget": "knob"
+        },
+        {
+          "param": "A14",
+          "widget": "knob"
+        },
+        {
+          "param": "A3",
+          "widget": "knob"
+        },
+        {
+          "param": "A7",
+          "widget": "knob"
+        },
+        {
+          "param": "A11",
+          "widget": "knob"
+        },
+        {
+          "param": "A15",
+          "widget": "knob"
+        },
+        {
+          "param": "A4",
+          "widget": "knob"
+        },
+        {
+          "param": "A8",
+          "widget": "knob"
+        },
+        {
+          "param": "A12",
+          "widget": "knob"
+        },
+        {
+          "param": "A16",
+          "widget": "knob"
+        }
+      ]
+    },
+    {
+      "name": "STEPS B",
+      "controls": [
+        {
+          "param": "B1",
+          "widget": "knob"
+        },
+        {
+          "param": "B5",
+          "widget": "knob"
+        },
+        {
+          "param": "B9",
+          "widget": "knob"
+        },
+        {
+          "param": "B13",
+          "widget": "knob"
+        },
+        {
+          "param": "B2",
+          "widget": "knob"
+        },
+        {
+          "param": "B6",
+          "widget": "knob"
+        },
+        {
+          "param": "B10",
+          "widget": "knob"
+        },
+        {
+          "param": "B14",
+          "widget": "knob"
+        },
+        {
+          "param": "B3",
+          "widget": "knob"
+        },
+        {
+          "param": "B7",
+          "widget": "knob"
+        },
+        {
+          "param": "B11",
+          "widget": "knob"
+        },
+        {
+          "param": "B15",
+          "widget": "knob"
+        },
+        {
+          "param": "B4",
+          "widget": "knob"
+        },
+        {
+          "param": "B8",
+          "widget": "knob"
+        },
+        {
+          "param": "B12",
+          "widget": "knob"
+        },
+        {
+          "param": "B16",
+          "widget": "knob"
         }
       ]
     }

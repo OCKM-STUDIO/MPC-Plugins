@@ -2,7 +2,7 @@
 
 A lean wavetable synth for Akai MPC standalone hardware, by OCKM. It is also a short course in
 wavetable synthesis: each of the first 16 presets shows one idea, and this README explains that
-idea in plain English and tells you which knob to turn to hear it. Presets 17–48 are ready-to-use
+idea in plain English and tells you which knob to turn to hear it. Presets 17–56 are ready-to-use
 sounds for house and techno.
 
 ## Requirements
@@ -59,7 +59,9 @@ Load a preset, play a note or a chord, then turn the knob named in **Try**.
 | 15 | Unison Stack | **Unison.** Five copies of the oscillator, each slightly detuned and spread left to right, make one big, wide, moving sound. | **Unison** (1–5), **Detune**, **Width**. Width 0 makes it mono again. |
 | 16 | Aliasing Free | **Mipmaps.** Play this bright **Sync** frame high up the keyboard. Very bright waves at high pitches can produce "aliasing": harsh, out-of-tune whistles. OCKM Wave stores each frame at 10 brightness levels and plays a duller copy the higher you go, so it stays clean. | Play the top octaves; compare with **Warp Quantize** (see "Honest notes"). |
 
-## Track-ready presets (17–24)| # | Preset | What it's for |
+## Track-ready presets (17–24)
+
+| # | Preset | What it's for |
 |---|---|---|
 | 17 | House Stab | short, bright chord stab: Harmonics with a position and filter envelope, 3 copies |
 | 18 | Deep Chord | soft, dark chord for deep house: Vowels, low cutoff, slow attack |
@@ -102,6 +104,46 @@ control on the panel, so stepping through them is a tour of what OCKM Wave can d
 | 47 | Bleep | tiny sine bleep with a sync blip | play high notes |
 | 48 | Trance Gate | square LFO at 1/16 chops the filter open and shut, in time | **LFO1 Div** |
 
+## Movement built into the preset: step lanes and the fat filter (49–56)
+
+**Step lanes.** Two lanes, **A** and **B**, each a row of 16 steps that play in time with the MPC.
+Each step is a level from 0 to 100%. A lane moves one **Target**: Cutoff, WT Pos, Warp, Res,
+Volume or Pitch. **Amount** sets how far the full 100% step moves it (negative moves it the other
+way). It's like drawing an automation lane, except the pattern is saved in the preset, so the
+sound moves by itself as soon as you play.
+
+- **Length** (1–16) is how many steps the lane plays before it starts again. Give A and B
+  different lengths, for example 16 and 7, and they drift against each other. The pattern keeps
+  changing for a long time before it lines up again.
+- **Rate** is the length of one step, from 1/64 to 2 bars (1/16 is the usual).
+- **Smooth** at 0% jumps from step to step (with a 1 ms ramp, so no clicks). Turn it up to glide.
+- **Volume** as a target is a rhythmic gate: 0% steps are silent. **Pitch** moves in whole
+  semitones: at Amount 100%, a 100% step is one octave up, and each 1/12 of the range is one
+  semitone. Hold a single key and the lane plays a riff.
+- While the MPC is playing, the lanes follow its song position, so they stay in time with your
+  beat. When it's stopped, they start from step 1 on the first note you play after silence.
+- The lanes are shared by every note, like the LFO: a held chord moves together.
+
+Steps are on the **STEPS A** and **STEPS B** pages, laid out like the MPC's pads in groups of four:
+each column is one beat (steps 1–4, 5–8, 9–12, 13–16), so one Q-Link bank edits one beat.
+
+**Fat filter.** **Slope** switches the filter from 12 dB to 24 dB. On the low-pass (LP) setting,
+24 dB is a 4-pole "ladder" filter, the round, squelchy kind classic analogue synths use. On BP and
+HP it doubles the filter up for a steeper cut. **Drive** pushes the sound into soft saturation before
+the filter, for grit and weight. **Fat** adds warmth below about 150 Hz after the filter, giving back
+the bottom end that a resonant filter tends to thin out.
+
+| # | Preset | What it shows | Try |
+|---|---|---|---|
+| 49 | Ladder Bass | the 24 dB ladder with Drive and Fat on a mono bass | **Slope** back to 12 dB to compare |
+| 50 | Seq Filter Funk | lane A moves the ladder's cutoff in a funky 1/16 pattern; Porta slides | **A Amount**, **Res** |
+| 51 | Polymeter Pad | lane A (12 steps) on Cutoff and lane B (7 steps) on WT Pos drift against each other | **B Length** |
+| 52 | Pitch Lane Riff | hold one key: lane B plays a riff in semitones, lane A gates it | **B Length**, change the steps |
+| 53 | Gate Build | lane A gates a supersaw; lane B opens the filter one step per bar over 16 bars | hold a chord through a build |
+| 54 | Dub Techno Seq | band-pass chord; lane A (7 steps, 1/8 dotted) on Cutoff, lane B (5 steps) on Res | **A Smooth** |
+| 55 | Acid Seq | hold one key: a pitch lane and a cutoff lane on a driven, resonant ladder | **Res**, **Drive** |
+| 56 | Wavetable Walk | lane A steps through the FM table, lane B bends the warp | **A Smooth** from 0 to 100% |
+
 ## Names you may know from other wavetable synths
 
 The on-screen names follow the usual wavetable-synth wording. The big difference is how you
@@ -126,12 +168,15 @@ the ring.
 | Mod wheel dragged onto WT POS | **Wheel>WT Pos** |
 | Velocity to volume | **Velo>Amp** |
 | Master volume | **Master** |
+| A "24" ladder filter type, drive, fat | **Slope** (24 dB on LP = ladder), **Drive**, **Fat** |
+| Sequencer automation lanes | **Step lanes A and B** (SEQ, STEPS A and STEPS B pages) |
 
 Not here: a second oscillator, noise, more envelopes and LFOs, a mod matrix, macros, effects
-(use the MPC's own), an arpeggiator. The filter and Env 2 are per note (each note of a chord
+(use the MPC's own), an arpeggiator, note lanes (use the MPC's own sequencer for notes; a Pitch
+lane can play a riff from one held key). The filter and Env 2 are per note (each note of a chord
 gets its own sweep); the LFO is shared, so a chord moves together.
 
-## The panel (three pages; each Q-Link bank is a column)
+## The panel (seven pages; each Q-Link bank is a column)
 
 **OSC**
 
@@ -142,14 +187,23 @@ gets its own sweep); the LFO is shared, so a chord moves together.
 | Warp (Off / Sync / Bend / Mirror / Quantize) | Width (stereo spread) | Oct (−3…+3) | *OCKM WAVE badge* |
 | Warp Amt | Sub (sine one octave down) | Velo>Amp (velocity → loudness) | |
 
-**FLT+ENV**
+**FILTER**
 
-| Filter | Env 1 (amp) | Env 2 | Env 2 to |
+| Filter | Character | | |
 |---|---|---|---|
-| Filter Type (LP / BP / HP) | Env1 Attack | Env2 Attack | Env2>WT Pos |
-| Cutoff | Env1 Decay | Env2 Decay | Env2>Warp |
-| Res | Env1 Sustain | Env2 Sustain | Env2>Cutoff |
-| Key Trk (cutoff follows the keys) | Env1 Release | Env2 Release | *badge* |
+| Filter Type (LP / BP / HP) | Drive | | |
+| Slope (12 dB / 24 dB) | Fat | | *badge* |
+| Cutoff | Key Trk (cutoff follows the keys) | | |
+| Res | | | |
+
+**ENV**
+
+| Env 1 (amp) | Env 2 | Env 2 to | |
+|---|---|---|---|
+| Env1 Attack | Env2 Attack | Env2>Cutoff | |
+| Env1 Decay | Env2 Decay | Env2>WT Pos | *badge* |
+| Env1 Sustain | Env2 Sustain | Env2>Warp | |
+| Env1 Release | Env2 Release | | |
 
 **LFO**
 
@@ -159,6 +213,17 @@ gets its own sweep); the LFO is shared, so a chord moves together.
 | LFO1 BPM (Off: Hz; On: locked to the MPC tempo) | LFO1>Warp | |
 | LFO1 Rate (when BPM is Off) | LFO1>Cutoff | *badge* |
 | LFO1 Div (when BPM is On) | LFO1>Pitch (vibrato) | |
+
+**SEQ**
+
+| Lane A | Lane B | Smooth | |
+|---|---|---|---|
+| A Target | B Target | A Smooth | |
+| A Amount | B Amount | B Smooth | *badge* |
+| A Length | B Length | | |
+| A Rate | B Rate | | |
+
+**STEPS A** and **STEPS B**: the 16 steps, one column per beat (A1–A4, A5–A8, A9–A12, A13–A16).
 
 The LFO is shared by all notes, so a chord moves together. When locked to the tempo it follows
 the MPC's song position while playing. Pitch bend is ±2 semitones; the sustain pedal works in Poly.
@@ -170,12 +235,16 @@ multiplied by 20 as a rough MPC One estimate (not yet measured on the hardware):
 
 | Case | Desktop | MPC One estimate |
 |---|---|---|
-| 4-note chord, "18 Deep Chord" (2 copies) | 0.22% | about 4.5% |
-| 4-note chord, "22 Wide Pad" (5 copies) | 0.31% | about 6% |
-| Worst case: 6 voices × 5 copies, Mirror warp, all modulation | 0.70% | about 14% |
+| 4-note chord, "18 Deep Chord" (2 copies) | 0.23% | about 4.7% |
+| 4-note chord, "22 Wide Pad" (5 copies) | 0.33% | about 6.5% |
+| One note of "49 Ladder Bass" (24 dB ladder, Drive, Fat) | 0.14% | about 2.8% |
+| Worst case: 6 voices × 5 copies, Mirror warp, all modulation | 0.70–0.76% | about 14–15% |
+| The same, plus the ladder, Drive, Fat and both lanes | 1.09% | about 22% |
 
 Unison is the expensive part: every extra copy costs nearly as much as another note. If the MPC
-stutters, lower **Unison** first. Plucks with Env1 Sustain at 0% free their voice as soon as they
+stutters, lower **Unison** first. The 24 dB ladder costs about as much as one extra unison copy
+per note; a mono voice (one copy, or Width 0) is filtered once instead of twice. The step lanes cost
+almost nothing. Plucks with Env1 Sustain at 0% free their voice as soon as they
 fade out, so fast patterns cost very little.
 
 The wavetables (2.6 MB) are built once when the plugin first loads and shared by every instance.
@@ -194,13 +263,18 @@ That takes about 40 ms on a desktop, so expect a short pause (well under a secon
 - **No on-screen help text or waveform display.** The MPC's plugin screen can't show live
   waveforms, and the UI format has no help pop-ups, so this README is the help.
 - **Changing Voicing** lets sounding notes ring out and starts fresh, so don't switch it mid-phrase.
+- **Drive, Fat and Res at maximum on big chords get loud.** With everything at 100%, six notes of
+  five copies and Master at 0 dB, the output peaks above 0 dBFS (the test measures +8 dB; without
+  Drive and Fat it is +7 dB). Turn **Master** down for heavy settings; the presets all stay below
+  0 dBFS.
+- **The ladder doesn't quite self-oscillate**: Res 100% stops just short of a pure whistle.
 
 ## Not in v1
 
 A second wavetable oscillator, noise, cross-modulation between oscillators; loading your own
 wavetables from `Content/`; more LFOs or envelopes, a mod matrix, macros; effects (use the MPC's
-own insert effects); a second filter, filter drive, 24 dB or ladder filters; more than 6 voices,
-MPE, poly aftertouch, an arpeggiator; a waveform display.
+own insert effects); a second filter; note lanes, more than two step lanes, drawn LFO shapes; more
+than 6 voices, MPE, poly aftertouch, an arpeggiator; a waveform display.
 
 ## Build and test
 
@@ -217,9 +291,10 @@ clang++ -std=c++17 -O2 -I$SDK/framework "-IOCKM Wave/src" "OCKM Wave/tests/harne
 python3 $SDK/tools/package.py "OCKM Wave"
 ```
 
-The harness checks every promise in SPEC.md section 9 (peaks, aliasing, morphing, clicks, warp,
+The harness checks every promise in SPEC.md sections 9, 13 and 14 (every preset sets every
+control, step lanes, the 24 dB filter, peaks, aliasing, morphing, clicks, warp,
 unison, voices, legato and glide, all-notes-off, CPU), ends with `ALL PASS`, and renders
-`build/demo.wav`: all 48 presets in order, about 4.8 seconds each.
+`build/demo.wav`: all 56 presets in order, about 4.8 seconds each.
 
 To redraw the skin after changing `ui.json`: build with `--target native`, run
 `python3 "OCKM Wave/make_skin.py"` (champagne tint is the default), then build again.

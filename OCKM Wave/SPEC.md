@@ -304,3 +304,30 @@ Memory: 8 tables × 16 frames × ~5,400 floats ≈ 2.6 MB (build: measured), sha
   (scrambles every control, loads each preset, compares with a fresh load) and checks that every
   parameter is used by at least one preset.
 
+## 14. Version 1.2: step lanes and a fatter filter
+
+Asked for by Simon after trying the SEQ lanes and filters of the synth he already uses. Appended
+parameters 37–81 (ids `slope`, `drive`, `fat`, `seqadest`, `seqaamt`, `seqalen`, `seqarate`,
+`seqasmooth`, `seqa1`…`seqa16`, then the same for `seqb`). Existing ids, order and defaults are
+unchanged, and so are presets 01–48 (the new controls sit at neutral defaults in them).
+
+- **Filter.** Slope 12 / 24 dB. 24 dB on LP is a 4-pole zero-delay-feedback ladder with one soft
+  clip at its input (k up to 3.8, just below self-oscillation; input gain 1 + k/2 to give back part
+  of the bass it loses). 24 dB on BP / HP is two state-variable stages in a row. Drive: cubic soft
+  clip before the filter, 1–10x, normalised so peaks stay put, up to 3.7 dB quieter at 100%. Fat: a
+  one-pole low-pass at 150 Hz added back after the filter (up to +6 dB). Mono voices (one copy or
+  Width 0) are filtered once and the right side copies the left.
+- **Step lanes.** Two lanes, shared by all notes. Each: Target (Cutoff ±48 st, WT Pos, Warp, Res,
+  Volume gate, Pitch in whole semitones up to ±12), Amount ±100%, Length 1–16, Rate (tempo
+  divisions), Smooth (0% = 1 ms, 100% = half a step), 16 steps 0–100%. The clock follows the MPC's
+  song position while playing; when stopped it starts at step 1 on the first note after silence.
+  The Volume gate is ramped per sample across each 16-sample control step.
+- **Pages:** OSC, FILTER, ENV, LFO, SEQ, STEPS A, STEPS B (steps laid out one beat per column).
+- **Presets 49–56** show the ladder and the lanes.
+- **Tests added:** every preset sets all 82 values; every parameter used by a preset; Volume gate
+  on/off > 40 dB in time; Length 3 repeats every 3 steps; gate edges ramped; Pitch lane +12 st
+  doubles the frequency; 24 dB cuts the 31st harmonic 25 dB more than 12 dB; Drive + Fat at 100%
+  add at most 3 dB to the loudest peak; CPU taken as the best of 3 runs.
+- **CPU:** typical unchanged (4.7% est.); a mono ladder-bass note 2.8%; worst case with every 1.2
+  feature about 22% on the MPC One (was 14–15% without them). Not yet measured on hardware.
+

@@ -145,8 +145,8 @@ int main(int argc, char** argv)
                     printf("      %s leaves %s unchanged\n", a.programName(prog), a.param(i).name.c_str()); }
         }
         printf("      %d presets\n", ref.numPrograms());
-        check(ok, "choosing any preset sets every one of the 37 parameters");
-        check(ref.numPrograms() == 48, "48 presets");
+        check(ok, "choosing any preset sets every parameter (all 82)");
+        check(ref.numPrograms() == 56 && ref.numParams() == 82, "56 presets, 82 parameters");
     }
 
     // 1c. Every parameter is used (moved from its default) by at least one preset.
@@ -184,6 +184,76 @@ int main(int argc, char** argv)
         check(okPeak, "every preset: 4-note chord at full velocity peaks below 0 dBFS");
         check(okSound, "every preset makes sound (peak above -30 dBFS)");
         check(okFinite, "every preset: no NaN/Inf, no denormals");
+    }
+
+    // 2b. Step lanes (1.2).
+    {
+        const double bpm = 120.0;
+        const int step = (int)(SR * 60.0 / bpm / 4.0);              // one 1/16 step
+        auto gate = [&](int len, std::initializer_list<float> pat) {
+            OCKMWave p; start(p);
+            p.set(kASus, 100.f); p.set(kPosition, 0.f); p.set(kADest, (float)kToVolume); p.set(kAAmt, 100.f); p.set(kASmooth, 0.f);
+            p.set(kALen, (float)len); p.set(kARate, (float)kDivisionSixteenth);
+            int i = 0; for (float x : pat) p.set(kAStep1 + i++, x);
+            for (; i < 16; ++i) p.set(kAStep1 + i, 0.f);
+            return run(p, step * 8, {on(0, 60)}, 128, nullptr, bpm);
+        };
+        auto stepRms = [&](const Render& r, int k) { return db(rms(r.L, k * step + step / 4, k * step + 3 * step / 4)); };
+        const Render a = gate(16, {100, 0, 100, 0, 100, 0, 100, 0});
+        const double on0 = stepRms(a, 2), off1 = stepRms(a, 3);
+        printf("      Volume lane 100/0 at 1/16: on step %.1f dB, off step %.1f dB\n", on0, off1);
+        check(on0 - off1 > 40.0, "step lane on Volume gates in time (on/off steps differ by over 40 dB)");
+        const Render b = gate(3, {100, 0, 0});
+        const double s3 = stepRms(b, 3), s4 = stepRms(b, 4), s6 = stepRms(b, 6);
+        check(s3 - s4 > 40.0 && s6 - s4 > 40.0, "lane Length 3 repeats every 3 steps");
+        // A sine with a gate: the biggest sample-to-sample jump anywhere (edges included) is no bigger than
+        // the sine's own steepest slope, i.e. the gate's edges are ramped, not cut.
+        const float edges = maxStep(a.L, step, step * 8), still = maxStep(a.L, 2 * step + step / 4, 2 * step + 3 * step / 4);
+        printf("      gate: largest sample step %.4f (steady sine %.4f)\n", edges, still);
+        check(edges <= still * 2.0f, "Smooth 0%: gate edges are ramped (1 ms), no clicks");
+
+        // Pitch lane: step 2 = +12 st -> the zero-crossing rate doubles.
+        OCKMWave p; start(p);
+        p.set(kASus, 100.f); p.set(kPosition, 0.f); p.set(kADest, (float)kToPitch); p.set(kAAmt, 100.f); p.set(kASmooth, 0.f);
+        for (int i = 0; i < 16; ++i) p.set(kAStep1 + i, i % 2 ? 100.f : 0.f);
+        const Render c = run(p, step * 4, {on(0, 57)}, 128, nullptr, bpm);
+        auto zc = [&](int k) { int z = 0; for (int i = k * step + step / 4; i < k * step + 3 * step / 4; ++i) z += (c.L[(size_t)i - 1] < 0) != (c.L[(size_t)i] < 0); return z; };
+        const double ratio = (double)zc(3) / std::max(1, zc(2));
+        printf("      Pitch lane: zero crossings step 2 -> 3 ratio %.2f\n", ratio);
+        check(ratio > 1.9 && ratio < 2.1, "step lane on Pitch moves by whole semitones (100% step = one octave up)");
+    }
+
+    // 2c. Filter character (1.2): 24 dB is steeper; Drive, Fat and Res at maximum stay safe.
+    {
+        auto bright = [&](int slope) {
+            OCKMWave p; start(p);
+            p.set(kASus, 100.f); p.set(kCutoff, 500.f); p.set(kReso, 0.f); p.set(kKeyTrack, 0.f); p.set(kSlope, (float)slope);
+            const Render r = run(p, ms(600), {on(0, 36)});
+            const int N = 8192; auto m = spectrum(r.L, ms(300), N);
+            const double f0 = 440.0 * std::pow(2.0, (36 - 69) / 12.0);
+            return db(at(m, f0 * 31, N) / at(m, f0, N));             // the 31st harmonic, about 2 kHz
+        };
+        const double d12 = bright(0), d24 = bright(1);
+        printf("      cutoff 500 Hz, 31st harmonic vs fundamental: 12 dB %.1f dB, 24 dB %.1f dB\n", d12, d24);
+        check(d24 < d12 - 15.0, "24 dB slope cuts the highs much harder than 12 dB");
+
+        bool okPeak = true, okFin = true; float worst = 0, base = 0;
+        for (int ft = 0; ft < 3; ++ft) for (int sl = 0; sl < 2; ++sl) for (int on12 = 0; on12 < 2; ++on12)
+        {
+            OCKMWave p; start(p);
+            p.set(kFType, (float)ft); p.set(kSlope, (float)sl); p.set(kReso, 100.f);
+            if (on12) { p.set(kDrive, 100.f); p.set(kFat, 100.f); }
+            p.set(kCutoff, 300.f); p.set(kOutput, 0.f); p.set(kUnison, 5.f); p.set(kSub, 100.f); p.set(kEnvCut, 48.f);
+            p.set(kMAtk, 1.f); p.set(kMDec, 300.f);
+            std::vector<Ev> evs; for (int i = 0; i < 6; ++i) evs.push_back(on(0, 36 + 5 * i));
+            const Render r = run(p, ms(2000), evs);
+            (on12 ? worst : base) = std::max(on12 ? worst : base, peak(r));
+            if (!finite(r) || !noDenormals(r)) okFin = false;
+        }
+        printf("      Res 100%%, Sub 100%%, 6 notes x 5 copies, Master 0 dB: peak %.1f dBFS; with Drive and Fat 100%%: %.1f dBFS\n", db(base), db(worst));
+        if (db(worst) > db(base) + 3.0) okPeak = false;
+        check(okPeak, "Drive and Fat at 100% add no more than 3 dB to the loudest peak (all filter types and slopes)");
+        check(okFin, "extreme filter settings: no NaN/Inf, no denormals");
     }
 
     // 3. Aliasing: Shapes saw at C7 stays clean.
@@ -321,20 +391,32 @@ int main(int argc, char** argv)
     {
         const int len = ms(10000);
         auto pct = [&](const Render& r) { return 100.0 * r.seconds / (len / SR); };
+        // Best of 3 fresh runs, so a busy computer doesn't fail the check.
+        auto best = [&](std::function<void(OCKMWave&)> setup, const std::vector<Ev>& e) {
+            double b = 1e9;
+            for (int k = 0; k < 3; ++k) { OCKMWave p; setup(p); start(p); b = std::min(b, pct(run(p, len, e))); }
+            return b;
+        };
+        auto prog = [](int i) { return [i](OCKMWave& p) { p.setProgram(i); }; };
         // Typical: a sustained 4-note chord of 18 Deep Chord (2 copies) and 17 House Stab (3 copies) held
         // down (its voices free themselves once they decay to silence); the higher of the two counts.
         std::vector<Ev> evs; for (int n : kChord) evs.push_back(on(0, n));
-        OCKMWave t1; t1.setProgram(17); start(t1);
-        OCKMWave t2; t2.setProgram(16); start(t2);
-        const double deep = pct(run(t1, len, evs)), stab = pct(run(t2, len, evs));
-        OCKMWave t3; t3.setProgram(21); start(t3);
-        const double pad = pct(run(t3, len, evs));
+        const double deep = best(prog(17), evs), stab = best(prog(16), evs), pad = best(prog(21), evs);
         printf("      CPU (desktop): Deep Chord %.3f%%, House Stab %.3f%%, Wide Pad (5 copies) %.3f%%\n", deep, stab, pad);
         const double typical = std::max(deep, stab);
-        OCKMWave w; w.set(kUnison, 5.f); w.set(kWarp, (float)kWarpMirror); w.set(kWarpAmt, 60.f); w.set(kLfoWarp, 50.f);
-        w.set(kLfoPos, 50.f); w.set(kEnvPos, 50.f); w.set(kEnvCut, 24.f); w.set(kSub, 50.f); w.set(kLfoPitch, 20.f); start(w);
+        auto worstSetup = [](OCKMWave& w) {
+            w.set(kUnison, 5.f); w.set(kWarp, (float)kWarpMirror); w.set(kWarpAmt, 60.f); w.set(kLfoWarp, 50.f);
+            w.set(kLfoPos, 50.f); w.set(kEnvPos, 50.f); w.set(kEnvCut, 24.f); w.set(kSub, 50.f); w.set(kLfoPitch, 20.f);
+        };
         std::vector<Ev> e6; for (int i = 0; i < 6; ++i) e6.push_back(on(0, 40 + 5 * i));
-        const double worst = pct(run(w, len, e6));
+        const double worst = best(worstSetup, e6);
+        // The same, plus everything 1.2 added: 24 dB ladder, Drive, Fat and both step lanes.
+        const double worst12 = best([&](OCKMWave& w) { worstSetup(w); w.set(kSlope, 1.f); w.set(kDrive, 50.f); w.set(kFat, 50.f);
+                                                        w.set(kAAmt, 50.f); w.set(kBAmt, 50.f); }, e6);
+        // A mono ladder bass (one copy: filtered once, not twice).
+        const double ladBass = best(prog(48), {on(0, 36)});
+        printf("      CPU (desktop): worst case + ladder, Drive, Fat, lanes %.3f%%; 49 Ladder Bass %.3f%%\n", worst12, ladBass);
+        check(worst12 < 1.1, "CPU: worst case with every 1.2 feature under 1.1% on the desktop (about 22% on the MPC One)");
         printf("      CPU (desktop): typical 4-note chord %.3f%%, worst case 6 voices x 5 copies %.3f%% of one core\n", typical, worst);
         printf("      estimated MPC One (x20): typical %.1f%%, worst case %.1f%%\n", typical * 20, worst * 20);
         check(typical < 0.25, "CPU: typical preset under 0.25% on the desktop (under 5% on the MPC One)");
@@ -368,7 +450,7 @@ int main(int argc, char** argv)
             L.insert(L.end(), r.L.begin(), r.L.end()); R.insert(R.end(), r.R.begin(), r.R.end());
         }
         writeWav(argv[1], L, R);
-        printf("      wrote %s (%.0f s, presets 01-48 in order, about 4.8 s each)\n", argv[1], L.size() / SR);
+        printf("      wrote %s (%.0f s, presets 01-56 in order, about 4.8 s each)\n", argv[1], L.size() / SR);
     }
 
     printf(fails ? "\n%d FAILED\n" : "\nALL PASS\n", fails);
