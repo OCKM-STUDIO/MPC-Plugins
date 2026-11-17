@@ -9,7 +9,7 @@ OCKM Wave for chords and pads, OCKM Gate for pumping.
 | Note | Drum | How it's made | Morph 0% → 50% → 100% |
 |---|---|---|---|
 | 36 | Kick | Low sine with a fast pitch drop; a modulator adds the knock | round sub → punchy kick → hard FM boom with a zap |
-| 37 | Snare | Sine with an off-pitch modulator (shell ring) plus high-passed noise (wires) | tuned body → classic snare → noisy metallic crack |
+| 37 | Snare | A short, pitch-dropping sine with an off-pitch modulator (shell), plus louder band-passed noise with a crack at the start (wires) | tight tuned snare → classic snare → noisy metallic crack |
 | 38 | Clap | A sine whose pitch is shaken by noise, making a band of noise | one tight snap → three claps → wide, lower five-clap |
 | 39 | Closed Hat | Three sines in a chain at odd ratios, high-passed. Chokes the open hat | glassy ping → classic metal → trashy wash |
 | 40 | Open Hat | Same, longer | same |
@@ -71,6 +71,8 @@ Lo-Fi House, Acid Partner Kit. `build/demo.wav` plays the same 4-bar groove thro
 
 ## Changes
 
+- **1.2.1:** the snare reworked to sound like a snare: a shorter, snappier body and louder,
+  brighter wires with a crack at the start. Same knobs, same level.
 - **1.2.0:** new **Variation**, **Vel>Morph** and **Drive** knobs (SHAPE page, FEEL column). All
   default to 0%, so 1.1 projects sound exactly the same. Kits use them (Init leaves them off).
 - **1.1.0:** the fifth knob on every drum became **Morph**. Projects saved with 1.0 load fine, but

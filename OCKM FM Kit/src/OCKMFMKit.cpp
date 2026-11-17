@@ -115,6 +115,8 @@ struct Voice
     float c1 = 0, c2 = 0, o1 = 0, o2 = 0;   // last two outputs of the carrier and of the top modulator
     float ph1 = 0, ph2 = 0, ph3 = 0;
     float hpA = 0.0f, lp1 = 0.0f, lp2 = 0.0f;   // one-pole high-pass states
+    float lpA = 1.0f, lp3 = 0.0f;               // snare: low-pass on the wires (top of the band)
+    float sEnv = 0.0f, sK = 0.0f, snapAmt = 0.0f;   // snare: extra burst of noise at the start (the crack)
     int burstsLeft = 0, burstTimer = 0, burstGap = 0;
     float tail = 0.0f, tailK = 0.0f;   // declick: the previous sound fading out over ~1.5 ms
     float lastOut = 0.0f;
@@ -142,7 +144,7 @@ struct Voice
         tone *= bright;
         gain = level * (0.32f + 0.68f * vel);
         amp = 1.0f; pEnv = 1.0f; mEnv = 1.0f; nEnv = 0.0f;
-        ph1 = ph2 = ph3 = 0.0f; lp1 = lp2 = 0.0f;
+        ph1 = ph2 = ph3 = 0.0f; lp1 = lp2 = lp3 = 0.0f; sEnv = 0.0f;
         ampK = decayCoef(expMap(decay, kDecayLo[type], kDecayHi[type]), sr);
         sweep = 0.0f; ratio2 = 1.0f; idxBase = idxEnv = idx3 = 0.0f; noiseAmt = 0.0f; body = 1.0f;
         fbC = fbM = 0.0f; c1 = c2 = o1 = o2 = 0.0f;
@@ -165,17 +167,22 @@ struct Voice
                 mK = decayCoef(m3(20.0f, 60.0f, 150.0f, x), sr);
                 fbC = m3(0.0f, 0.0f, 0.2f, x);
                 break;
-            case kSnare:     // tuned body -> classic snare -> noisy crack with a metallic ring
-                inc = 185.0f * r / sr;
-                sweep = m3(0.8f, 0.5f, 0.2f, x); pK = decayCoef(90.0f, sr);
-                ratio2 = m3(1.0f, 1.6f, 2.76f, x);
-                idxBase = tone * m3(0.2f, 0.5f, 1.5f, x); idxEnv = tone * m3(1.0f, 2.5f, 4.0f, x);
-                mK = decayCoef(m3(80.0f, 150.0f, 300.0f, x), sr);
+            case kSnare:     // tight tuned snare -> classic snare -> noisy crack with a metallic ring
+                // A snare is a short, pitch-dropping drum "body" plus the rattle of the wires (band-passed
+                // noise), which is louder and lasts longer than the body. Decay sets both.
+                inc = 180.0f * r / sr;
+                sweep = m3(0.6f, 0.8f, 0.5f, x); pK = decayCoef(m3(40.0f, 30.0f, 20.0f, x), sr);
+                ratio2 = m3(1.5f, 1.6f, 2.76f, x);
+                idxBase = tone * m3(0.2f, 0.4f, 1.2f, x); idxEnv = tone * m3(1.0f, 2.0f, 4.0f, x);
+                mK = decayCoef(m3(60.0f, 80.0f, 200.0f, x), sr);
                 fbM = m3(0.0f, 0.0f, 0.15f, x);
-                body = m3(1.0f, 0.85f, 0.5f, x);
-                noiseAmt = m3(0.1f, 0.6f, 1.2f, x); nEnv = 1.0f;
-                nK = decayCoef(expMap(decay, 80.0f, 500.0f) * m3(0.4f, 0.9f, 1.3f, x), sr);
-                hpA = hpCoef(m3(800.0f, 1500.0f, 3500.0f, x), sr);
+                ampK = decayCoef(expMap(decay, 40.0f, 250.0f) * m3(1.3f, 1.0f, 0.8f, x), sr);   // body
+                body = m3(1.0f, 0.8f, 0.5f, x);
+                noiseAmt = m3(1.6f, 2.0f, 2.8f, x); nEnv = 1.0f;                                  // wires
+                nK = decayCoef(expMap(decay, 80.0f, 500.0f) * m3(0.8f, 1.0f, 1.3f, x), sr);
+                hpA = hpCoef(m3(600.0f, 1200.0f, 2500.0f, x), sr);
+                lpA = hpCoef(m3(5000.0f, 9000.0f, 14000.0f, x), sr);
+                sEnv = 1.0f; sK = decayCoef(12.0f, sr); snapAmt = m3(0.5f, 1.0f, 1.5f, x);     // crack
                 break;
             case kClap:      // one tight snap -> classic three-clap -> wide, lower five-clap
             {
@@ -249,9 +256,11 @@ struct Voice
                     if (type == kSnare)
                     {
                         const float n = rng.nextBipolar();
-                        lp1 += hpA * (n - lp1);
-                        y = y * body + (n - lp1) * noiseAmt * nEnv * 0.75f;
-                        nEnv *= nK;
+                        lp1 += hpA * (n - lp1);                      // high-pass: take away the low rumble
+                        lp3 += lpA * ((n - lp1) - lp3);              // low-pass: take the fizz off the top
+                        y = y * body + lp3 * noiseAmt * (nEnv + snapAmt * sEnv) * 0.75f;
+                        y *= 0.55f;                                  // noise peaks high: sit level with the kick
+                        nEnv *= nK; sEnv *= sK;
                     }
                     else if (type == kKick) y *= 1.4f;    // the kick leads the mix
                     pEnv *= pK; mEnv *= mK; amp *= ampK;
@@ -463,7 +472,7 @@ private:
         info.name         = "OCKM FM Kit";
         info.vendor       = "OCKM";                    // == plugin.json "manufacturer"
         info.uniqueId     = MPC_FOURCC('O', '0', 'O', 'H');   // == plugin.json "uid" (permanent)
-        info.version      = 1200;
+        info.version      = 1201;
         info.isInstrument = true;
         info.numInputs    = 0;
         info.numOutputs   = 4;                         // Main 1-2, Aux 3-4

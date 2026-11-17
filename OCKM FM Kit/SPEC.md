@@ -3,7 +3,7 @@
 > **Governing rule: keep it lean.** Eight FM drums, five knobs each, one routing switch, one
 > master level. No per-operator editing. Everything else goes in section 9 ("Not in v1").
 
-Status: **v1.2 built** (Variation, Vel>Morph, Drive, section 14; Morph, section 13). v1 worked on Simon's MPC One (routing not yet tried). Simon approved this spec as written (multi-out kept, these fifth knobs, bronze). Decisions taken while building are in section 12 and marked "(build)".
+Status: **v1.2.1 built** (Variation, Vel>Morph, Drive, section 14; Morph, section 13). v1 worked on Simon's MPC One (routing not yet tried). Simon approved this spec as written (multi-out kept, these fifth knobs, bronze). Decisions taken while building are in section 12 and marked "(build)".
 
 OCKM FM Kit is a drum-kit **instrument** for the MPC One. Each pad plays one synthesised drum
 built from two or three sine-wave "operators" that bend each other's pitch (FM). It is the
@@ -48,7 +48,7 @@ change its pitch (use `Tune`). Note-offs are ignored: each drum is a one-shot.
 | Note | Drum | Operators | Recipe (at Morph 50%) |
 |---|---|---|---|
 | 36 | **Kick** | 2 | Carrier sine at ~48 Hz with a fast pitch drop. A modulator at ratio 1 with a short envelope adds the "knock" at the start (Tone = how hard). |
-| 37 | **Snare** | 2 + noise | Carrier ~185 Hz, modulator at ratio 1.6 (the shell ring), short pitch drop, plus white noise through a cheap high-pass (the wires). |
+| 37 | **Snare** | 2 + noise | Carrier ~180 Hz, modulator at ratio 1.6 (the shell ring), fast pitch drop, short body; plus band-passed noise (the wires, about 1.2–9 kHz) that is louder and longer than the body, with an extra 12 ms burst at the start (the crack). v1.2 rework, section 14. |
 | 38 | **Clap** | 1 + noise | A carrier at ~1.2 kHz whose pitch is wobbled by **noise**: FM making a band of noise, no filter needed (Tone = band width). Three quick claps then a tail. |
 | 39 | **Closed Hat** | 3 | FM metal: op 3 wobbles op 2, which wobbles op 1, at odd ratios, then a high-pass. Tone = index. Short. **Chokes the open hat.** |
 | 40 | **Open Hat** | 3 | Same, longer. |
@@ -62,7 +62,7 @@ at once (ratios, pitch-drop depth and speed, how long the bright click lasts, no
 | Drum | 0% | 50% | 100% |
 |---|---|---|---|
 | Kick | round sub, almost no click | punchy classic kick | hard FM boom with a zap (big fast drop, carrier feedback) |
-| Snare | tuned, tom-like body | classic snare | noisy crack with a metallic ring |
+| Snare | tight, tuned snare (body-led) | classic snare (wire-led) | noisy crack with a metallic ring |
 | Clap | one tight, higher snap | classic three-clap | wide, lower five-clap |
 | Hats | soft glassy ping (a few pure partials) | classic metal | trashy, noisy, cymbal-like wash that rings longer |
 | Toms | soft round tom | synth tom with a big bend | metallic conga / ping (ratio 3.5) |
@@ -184,7 +184,7 @@ Cost per drum per sample, while it rings:
 | Drum | Work per sample |
 |---|---|
 | Kick, toms, perc | 2 table reads, ~3 envelope multiplies |
-| Snare | 2 table reads, 1 noise sample, 1 one-pole filter, ~4 multiplies |
+| Snare | 2 table reads, 1 noise sample, 2 one-pole filters, ~6 multiplies |
 | Clap | 1 table read, 1 noise sample, ~3 multiplies |
 | Hats | 3 table reads, 1 one-pole filter, ~2 multiplies |
 
@@ -329,3 +329,19 @@ the same as 1.1, so saved projects sound exactly as before.
   −4.0 to −6.1 dBFS; everything at maximum including Drive reaches −0.11 dBFS.
 - CPU: Drive adds one short sum per sample per ringing drum, within measurement noise (worst case
   still about 0.5–0.6% of an M3 core, roughly 3–5% of an MPC One core).
+
+### v1.2.1: snare rework (2026-11-17)
+
+On the MPC Simon found the snare "doesn't sound very snare-y". Measured: at Morph 50% the pitched
+body was 89% of the energy and the noise only 11%, so it was a ping with a little hiss (at 0% it
+was 100% body, a tom). Changes:
+
+- The body has its own shorter decay (Decay maps 40–250 ms) and a faster pitch drop (30 ms), so
+  it's a thump rather than a ring. The wires keep the longer 80–500 ms range.
+- The wires are band-passed (high-pass 600–2500 Hz, new low-pass 5–14 kHz, both moving with Morph)
+  and much louder, with a 12 ms burst at the start for the crack.
+- Body share of the energy, Morph 0 / 50 / 100%: 74% / 29% / 4% (was 100% / 89% / 40%).
+  Brightness 3953 / 7153 / 9660 Hz (was 709 / 3792 / 8629).
+- The whole snare is scaled ×0.55 so its peak (−11.2 dBFS at Init) sits level with the kick
+  (−11.1). Grooves still peak −4.0 to −6.1 dBFS; harness ALL PASS, host_sim 19/19.
+- Kits unchanged; their snares simply sound more like snares. Version 1.2.1 (1201).
