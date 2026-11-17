@@ -43,8 +43,11 @@ In between, every knob works exactly as set (the harness proves it bit for bit).
 - **Glide:** at 0 every note re-plucks, even if notes overlap. Above 0, a note that overlaps the
   previous one in the sequence slides to its pitch without re-plucking. Lengthen a note into the
   next one on the MPC to make it slide.
-- **Drive:** a gentle, level-matched soft clip after the filter, with a fixed gentle trim at
-  5 kHz after it so it adds grit, not fizz.
+- **Drive:** a level-matched soft clip **before** the filter, so the filter smooths what it
+  adds: grit and weight, not fizz.
+- **Tone** (SETUP page): a gentle 6 dB/octave darkening after the filter, from 400 Hz (very dark)
+  to 16 kHz (open). The default, about 1.2 kHz, takes the edge off the top without touching the
+  sub or the body.
 - **Echo:** synced to the MPC's tempo (1/16, 1/8T, 1/8, dotted 1/8, 1/4), ping-pong left and
   right. What goes into the echo loses everything below 250 Hz (24 dB/octave) and each repeat
   gets a little darker and lighter on lows, so the bass stays one tight, centred note and never
@@ -61,7 +64,7 @@ In between, every knob works exactly as set (the harness proves it bit for bit).
 | Env Amount | Glide | Volume | Echo Mix |
 
 Each column is one Q-Link bank; Cutoff and Decay are the top two of the first. Program-mode
-Q-Links use the same layout. Page **SETUP** holds Vel>Filter and the name badge.
+Q-Links use the same layout. Page **SETUP** holds Vel>Filter, Tone and the name badge.
 
 ## Presets
 
@@ -79,6 +82,9 @@ over 16 bars, then Warm House Pluck with the echo turned up.
   **Not yet measured on the MPC One.**
 - **The output never clips:** a soft ceiling above −3 dBFS keeps even everything at maximum with
   Volume +6 dB under 0 dBFS. The presets peak around −5 to −8 dBFS and don't touch it.
+- **v1.2.0: Tone and drive before the filter.** At Cutoff 100 / Decay 90 the default Tone
+  takes another 5 dB off above 2 kHz (12 + 5 dB less than v1.0.0) and keeps the body. Drive 100%
+  is within 1 dB of Drive 0 at the Init sound.
 - **v1.1.0: full, not fizzy.** In v1.0.0, opening Cutoff and Decay got very fizzy. Now, at
   Cutoff 100 / Decay 90, there's about 12 dB less above 2 kHz and the low-mids sit 2 dB closer
   to the sub, at the same overall level. The top quarter of Cutoff is still the gentlest step

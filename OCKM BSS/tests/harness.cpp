@@ -283,7 +283,7 @@ int main(int argc, char** argv)
         printf("      growl corner: level after 1 s x%.2f of the attack, brightness %.0f Hz (Init %.0f Hz), held level after 1 s %.1f dB (Init %.1f dB)\n",
                holdRatio, bG, bI, db(fullG), db(fullI));
         check(holdRatio >= 0.5f, "Cutoff 100 / Decay 100: a held note keeps growling (at least half its level after 1 s)");
-        check(bG > 3.0f * bI, "Cutoff 100 / Decay 100: far brighter than the Init sound");
+        check(bG > 2.5f * bI, "Cutoff 100 / Decay 100: far brighter than the Init sound (> 2.5x in Hz)");
         check(fullG > 2.0f * fullI, "Cutoff 100 / Decay 100: fuller than the Init sound (held level at least 6 dB higher after 1 s)");
         check(peak(o.L) < 1.0f && peak(og.L) < 1.0f, "kick and growl corners stay below 0 dBFS");
 
@@ -429,6 +429,29 @@ int main(int argc, char** argv)
         OCKMBSS b; b.set(kVolume, -18.0206f); auto ob = render(b, bassline(1), 16 * STEP);
         float maxd = 0; for (size_t i = 0; i < oa.L.size(); ++i) maxd = std::fmax(maxd, std::fabs(oa.L[i] - 2.0f * ob.L[i]));
         check(maxd < 1e-4f, "Volume only changes the level (-12 dB vs -18 dB renders match x2)");
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // 12b. Tone darkens after the filter; Drive (before the filter) adds grit at a similar level.
+    // ---------------------------------------------------------------------------------------
+    {
+        auto top = [&](float tone, float cut, float drive, float& lvl) {
+            OCKMBSS p; p.setNormalised(kTone, tone); p.setNormalised(kCutoff, cut); p.setNormalised(kDrive, drive);
+            p.setNormalised(kDecay, 0.9f);
+            auto o = render(p, bassline(2), 32 * STEP);
+            lvl = db(rms(o.L, 0, (int)o.L.size()));
+            return brightDb(o.L, 0, (int)o.L.size());
+        };
+        float l0, l1, l2, lA, lB;
+        const float t0 = top(0.0f, 0.8f, 0.0f, l0), t1 = top(0.3f, 0.8f, 0.0f, l1), t2 = top(1.0f, 0.8f, 0.0f, l2);
+        printf("      top-end index at Tone 0 / 30 / 100 (Cutoff 80): %.1f / %.1f / %.1f dB, level %.1f / %.1f / %.1f dB\n",
+               t0, t1, t2, l0, l1, l2);
+        check(t2 - t1 > 3.0f && t1 - t0 > 3.0f, "Tone: each step darker or brighter (> 3 dB top end), low end kept");
+        check(std::fabs(l2 - l0) < 3.0f, "Tone: level within 3 dB from Tone 0 to 100");
+        const float dA = top(0.3f, 0.42f, 0.0f, lA), dB = top(0.3f, 0.42f, 1.0f, lB);
+        printf("      Drive 0 / 100 (Init): top-end index %.1f / %.1f dB, level %.1f / %.1f dB\n", dA, dB, lA, lB);
+        check(dB - dA > 2.0f, "Drive: adds harmonics (> 2 dB more top end at 100 %)");
+        check(std::fabs(lB - lA) < 2.0f, "Drive: level-matched (within 2 dB at the Init sound)");
     }
 
     // ---------------------------------------------------------------------------------------

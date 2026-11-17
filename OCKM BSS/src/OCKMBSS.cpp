@@ -13,11 +13,11 @@
 //        -> BassVoice:
 //             Core (rounded sine) + Sub (sine, one octave down, phase-locked)
 //               + Saw (PolyBLEP, optionally detuned)
+//          -> Drive (soft clip before the filter, level compensated, 0 = clean)
 //          -> Filter: 24 dB/oct zero-delay-feedback ladder low-pass, saturated in its loop
 //             cutoff (octaves above 40 Hz) = Cutoff knob + Env Amount * filter env
 //                                + key tracking (0.5 oct/oct from C1) - velocity darkening
-//          -> Drive (soft clip, level compensated, 0 = clean) -> growl low-mid lift
-//          -> fixed 5 kHz 12 dB/oct trim (keeps the open filter full, not fizzy)
+//          -> growl low-mid lift -> Tone (6 dB/oct darkening, 400 Hz .. 16 kHz)
 //          -> Amp envelope (attack, Decay-driven decay, sustain, release) * velocity
 //   -> 20 Hz rumble cut -> + Echo (bass-safe ping-pong delay, lows cut from the repeats)
 //   -> Volume -> safety ceiling (transparent below -3 dBFS) -> L / R
@@ -68,6 +68,7 @@ enum ParamIndex
     kEchoTime,     // echo time, tempo-synced choice
     kEchoFb,       // echo feedback, 0..100 %
     kEchoMix,      // echo level, 0..100 % (0 = echo off)
+    kTone,         // tone after the filter and amp chain, 0..100 % (shown in Hz)       [v1.2]
     kNumParams
 };
 
@@ -78,6 +79,7 @@ inline float glideMs(float n)   { return n <= 0.0f ? 0.0f : 10.0f * std::pow(50.
 inline float attackMs(float n)  { return std::pow(1000.0f, n); }           // 1 ms .. 1 s
 inline float releaseMs(float n) { return 5.0f * std::pow(600.0f, n); }     // 5 ms .. 3 s
 inline float detuneCents(float n) { return 20.0f * n; }
+inline float toneHz(float n)    { return 400.0f * std::pow(40.0f, n); }    // 400 Hz .. 16 kHz
 
 // Envelope times are "time to fall to about 2 %" = 4 time constants.
 inline float mulForMs(float ms, float sr, float steps = 1.0f)
@@ -97,7 +99,6 @@ constexpr float kGrowlBody    = 1.0f;    //   and a low-mid lift (+6 dB around k
 constexpr float kBodyHz       = 220.0f;
 constexpr float kTopKneeHz    = 2500.0f; // the filter (knob + envelope + key) eases off above here
 constexpr float kTopMaxHz     = 6000.0f; //   and never opens past this
-constexpr float kToneHz       = 5000.0f; // fixed 12 dB/oct trim after the drive
 constexpr int   kTick         = 8;       // control-rate interval in samples
 constexpr float kOutGain      = 2.2f;    // voice make-up gain (+7 dB): presets peak around -5 dBFS
 
@@ -173,7 +174,7 @@ struct Knobs                       // knob values, normalised 0..1
 {
     float cutoff = 0.42f, decay = 0.4f, reso = 0.25f, envAmt = 0.5f;
     float sub = 0.5f, saw = 0.3f, detune = 0.1f, glide = 0.0f;
-    float attack = 0.0f, sustain = 0.25f, release = 0.1f, drive = 0.0f, velFilt = 0.3f;
+    float attack = 0.0f, sustain = 0.25f, release = 0.1f, drive = 0.0f, velFilt = 0.3f, tone = 0.3f;
 };
 
 class BassVoice
@@ -185,14 +186,13 @@ public:
         smooth_ = 1.0f - std::exp(-(float)kTick / (0.015f * sr_));       // 15 ms knob smoothing
         fenvAttack_ = 1.0f - std::exp(-(float)kTick / (0.00068f * sr_)); // ~1 ms filter env attack
         thumpMul_ = std::exp(-(float)kTick / (kThumpMs * 0.001f * sr_));
-        tone1_.setCutoff(kToneHz, sampleRate); tone2_.setCutoff(kToneHz, sampleRate);
         bodyBand_.setCoeffs(BiquadCoeffs::bandpass(sampleRate, kBodyHz, 0.7f));
         reset();
     }
 
     void reset()
     {
-        filter_.reset(); tone1_.reset(); tone2_.reset(); bodyBand_.reset();
+        filter_.reset(); tone1_ = 0.0f; bodyBand_.reset();
         gate_ = false; stage_ = kIdle; amp_ = 0.0f;
         fenv_ = 0.0f; fenvRising_ = false; drop_ = 0.0f;
         pitch_ = pitchTarget_ = 36.0f;
@@ -256,7 +256,7 @@ public:
                     break;
                 case kRelease:
                     amp_ *= releaseMul_;
-                    if (amp_ < 1.0e-4f) { amp_ = 0.0f; stage_ = kIdle; filter_.reset(); tone1_.reset(); tone2_.reset(); bodyBand_.reset(); return; }   // -80 dB: done
+                    if (amp_ < 1.0e-4f) { amp_ = 0.0f; stage_ = kIdle; filter_.reset(); tone1_ = 0.0f; bodyBand_.reset(); return; }   // -80 dB: done
                     break;
                 default: break;
             }
@@ -271,15 +271,17 @@ public:
             const float core = roundSine(phase_);
             const float sub = roundSine(0.5f * phase_ + subFlip_);
             const float saw = 2.0f * sawPhase_ - 1.0f - polyBlep(sawPhase_, sawInc);
-            const float mix = core + subLvl_.next() * sub + sawLvl_.next() * saw;
+            float mix = core + subLvl_.next() * sub + sawLvl_.next() * saw;
 
-            // Filter, drive, amp.
+            // Drive (before the filter, so the filter smooths what it adds), filter, lift, tone, amp.
+            const float dMix = driveMix_.next(), dPre = drivePre_.next(), dNorm = driveNorm_.next();
+            if (dMix > 0.0f) mix += dMix * (fastTanh(mix * dPre) * dNorm - mix);
             Gs_ += 0.35f * (G_.next() - Gs_);                                 // rounds the ramp's corners
             float y = filter_.process(mix, Gs_, k_.next(), comp_.next()) * heatOut_.next();
-            const float dMix = driveMix_.next(), dPre = drivePre_.next(), dNorm = driveNorm_.next();
-            if (dMix > 0.0f) y += dMix * (fastTanh(y * dPre) * dNorm - y);
             y += body_.next() * bodyBand_.process(y);                         // low-mid lift (growl)
-            y = tone2_.process(tone1_.process(y));                           // trim the fizz
+            const float ta = toneA_.next();
+            tone1_ += ta * (y - tone1_);                                     // Tone: 6 dB/oct darkening
+            y = tone1_;
             out[i] += y * amp_ * velGain_ * kOutGain;
         }
     }
@@ -307,6 +309,7 @@ private:
         s_.sustain += smooth_ * (t_.sustain - s_.sustain);
         s_.drive   += smooth_ * (t_.drive - s_.drive);
         s_.velFilt += smooth_ * (t_.velFilt - s_.velFilt);
+        s_.tone    += smooth_ * (t_.tone - s_.tone);
 
         // Zones (SPEC 3a): offsets on top of the knobs, never overwrites.
         const float thump = thumpAmount(s_.decay), hold = holdAmount(s_.decay), growl = growlAmount(s_.cutoff);
@@ -356,11 +359,12 @@ private:
         sawLvl_.to(sawL, snap);
         comp_.to(0.75f * std::pow(1.0f + k, 0.6f) * norm * heat, snap);
         body_.to(kGrowlBody * growl, snap);
+        toneA_.to(1.0f - std::exp(-2.0f * kPi * toneHz(s_.tone) / sr_), snap);
         heatOut_.to(std::pow(heat, -0.65f), snap);                        // level-match the hotter filter
-        const float pre = 1.0f + 8.0f * drive * drive;
+        const float pre = 1.0f + 12.0f * drive * drive;
         drivePre_.to(pre, snap);
         driveMix_.to(clamp(2.0f * drive, 0.0f, 1.0f), snap);
-        driveNorm_.to(0.6f / fastTanh(0.6f * pre), snap);
+        driveNorm_.to(0.8f / fastTanh(0.8f * pre), snap);
     }
 
     Ladder filter_;
@@ -372,8 +376,8 @@ private:
     float fenv_ = 0.0f, drop_ = 0.0f, glideCoef_ = 1.0f;
     float pitch_ = 36.0f, pitchTarget_ = 36.0f, vel01_ = 1.0f, velGain_ = 1.0f;
     float phase_ = 0.0f, sawPhase_ = 0.0f, subFlip_ = 0.0f, detuneRatio_ = 1.0f;
-    Ramp inc_, G_, k_, comp_, heatOut_, body_, subLvl_, sawLvl_, drivePre_, driveMix_, driveNorm_;
-    OnePoleLP tone1_, tone2_;
+    Ramp inc_, G_, k_, comp_, heatOut_, body_, toneA_, subLvl_, sawLvl_, drivePre_, driveMix_, driveNorm_;
+    float tone1_ = 0.0f;
     Biquad bodyBand_;
     float Gs_ = 0.0f;
     int ctr_ = 0;
@@ -537,6 +541,7 @@ public:
         addParam(choiceParam("echotime", "Echo Time", {"1/16", "1/8T", "1/8", "1/8.", "1/4"}, 3));
         addParam(floatParam("echofb",  "Feedback",     0.0f, 100.0f, 35.0f, "%", 0));
         addParam(floatParam("echomix", "Echo Mix",     0.0f, 100.0f, 0.0f, "%", 0));
+        addParam(floatParam("tone",    "Tone",         0.0f, 100.0f, 30.0f, "Hz", 0));
         if (numParams() != kNumParams) mpc::log("OCKM BSS: parameter count mismatch (%d vs %d)", numParams(), (int)kNumParams);
 
         auto program = [this](const char* name, std::initializer_list<std::pair<int, float>> overrides)
@@ -587,7 +592,7 @@ public:
         k.detune = getNormalised(kDetune); k.glide = getNormalised(kGlide);
         k.attack = getNormalised(kAttack); k.sustain = getNormalised(kSustain);
         k.release = getNormalised(kRelease); k.drive = getNormalised(kDrive);
-        k.velFilt = getNormalised(kVelFilt);
+        k.velFilt = getNormalised(kVelFilt); k.tone = getNormalised(kTone);
         voice_.setKnobs(k);
         volume_.setTarget(dbToGain(get(kVolume)));
         const mpc::Transport& tr = ctx.transport;
@@ -640,6 +645,7 @@ public:
                            std::snprintf(buf, sizeof(buf), "%.0f", (double)glideMs(n)); break;
             case kAttack:  std::snprintf(buf, sizeof(buf), "%.0f", (double)attackMs(n)); break;
             case kRelease: std::snprintf(buf, sizeof(buf), "%.0f", (double)releaseMs(n)); break;
+            case kTone:    std::snprintf(buf, sizeof(buf), "%.0f", (double)toneHz(n)); break;
             case kDetune:  std::snprintf(buf, sizeof(buf), "%.1f", (double)detuneCents(n)); break;
             default: return false;
         }

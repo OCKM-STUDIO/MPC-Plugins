@@ -10,9 +10,9 @@
 > knob is for setting up the character once; presets are mostly different spots on the
 > Cutoff × Decay map. See section 3a.
 
-Status: **v1.1.0, 2026-11-14.** Build 0 errors / 0 warnings, host_sim 19/19, harness ALL
+Status: **v1.2.0, 2026-11-17.** Build 0 errors / 0 warnings, host_sim 19/19, harness ALL
 PASS. v1.0.0 played on the MPC One; v1.1.0 makes the open filter fuller instead of fizzy
-(section 13). Section 12 lists what the first build changed from this draft.
+(section 13); v1.2.0 adds Tone and moves Drive before the filter (section 14). Section 12 lists what the first build changed from this draft.
 
 | Item | Value |
 |---|---|
@@ -70,7 +70,7 @@ few dB of each other.
 
 ## 3. Filter: the main feature
 
-Signal flow: **Core + Sub + Saw → Filter → Drive → growl low-mid lift → 5 kHz trim → Amp → DC/rumble cut → (+ Echo) → Volume → safety limit**
+Signal flow: **Core + Sub + Saw → Drive → Filter → growl low-mid lift → Tone → Amp → DC/rumble cut → (+ Echo) → Volume → safety limit**
 
 - **24 dB/octave resonant low-pass**, a zero-delay-feedback (TPT) four-pole ladder. It stays
   stable when its cutoff is swept fast, which is what the Cutoff Q-Link and the envelope do.
@@ -147,9 +147,11 @@ The map, with every other knob at its default:
   - Sustain 0–100%: how much level holds while the note is held, after the decay
   - Release 0–100% ≈ 5 ms … 3 s
   - Velocity changes the level gently and fixed: velocity 1 is 6 dB quieter than 127 (no knob).
-- **Drive** 0–100%: gentle soft-clip after the filter (before the amp, so its tone doesn't change
-  as a note fades), level-compensated so turning it up warms and thickens rather than just getting
-  louder. 0% = clean.
+- **Drive** 0–100%: soft clip **before the filter** (v1.2.0; it was after), so the filter smooths
+  the harmonics it adds. Level-compensated so turning it up warms and thickens rather than just
+  getting louder. 0% = clean.
+- **Tone** 0–100% (SETUP page, v1.2.0): 6 dB/octave darkening after the filter and low-mid lift,
+  400 Hz … 16 kHz (exponential), default 30% ≈ 1.2 kHz.
 - **DC / rumble cut**: a fixed 20 Hz one-pole high-pass, so nothing inaudible eats headroom.
 - **Volume** (parameter 0): −60 … +6 dB, default −6 dB. Smoothed, no side effects.
 - **Output never clips**: a transparent safety soft-limit above −3 dBFS keeps every setting under
@@ -201,6 +203,7 @@ A tempo-synced delay built for bass (Simon: "let's get it in, with the echoes' l
 | 14 | `echotime` | Echo Time | 1/16, 1/8T, 1/8, 1/8., 1/4 | 1/8. |
 | 15 | `echofb` | Feedback | 0–100% (0 … 80% per repeat) | 35% |
 | 16 | `echomix` | Echo Mix | 0–100% (0 = off) | 0% |
+| 17 | `tone` | Tone | 0–100% (≈400 Hz … 16 kHz, exponential; v1.2.0) | 30% |
 
 17 parameters, all automatable (Q-Link moves can be recorded into the sequence).
 
@@ -215,13 +218,13 @@ Page 1 **"BASS"** (each column is one Q-Link bank of four, top to bottom = Q-Lin
 | Resonance | Detune | Release | Feedback |
 | Env Amount | Glide | Volume (fader) | Echo Mix |
 
-Page 2 **"SETUP"**: Vel>Filter, plus the OCKM BSS badge. (Drive sits at the top of the ECHO
+Page 2 **"SETUP"**: Vel>Filter and Tone, plus the OCKM BSS badge. (Drive sits at the top of the ECHO
 column because page 1 is full; it is the column's "colour" knob.)
 
 - Cutoff and Decay are Q-Links 1 and 2, with Resonance and Env Amount under them, so the
   first Q-Link column holds the whole filter, including the two playing knobs.
 - Program-mode Q-Links 1–16 → page 1, column by column (Cutoff on Q-Link 1, Echo Mix on 16).
-  Vel>Filter has no Program-mode Q-Link.
+  Vel>Filter and Tone have no Program-mode Q-Link.
 - Skin: copied from `OCKM Gate/make_skin.py`, adding an **olive** tint to its `TINTS` table
   (default `--tint olive`). Black knurled knobs, dark ink on label strips, printed column headings,
   amber-lit controls, battered brushed metal. The panel font gets any letters/digits these labels
@@ -403,3 +406,24 @@ dB closer to the sub. Energy above 2 kHz relative to the whole sound: −27.5 �
 Top-end change per quarter of Cutoff travel: 12.6, 26.2, 14.0, 7.0 dB. Presets peak at
 −4.3 … −7.8 dBFS. CPU is unchanged at about 0.1% of a desktop core (one band filter and two
 one-pole filters added).
+
+## 14. v1.2.0: Tone, and Drive before the filter
+
+Ideas taken (not code) from reading an open-source bass voice for the MPC/Force whose licence
+does not allow its code in an MIT project: its voices end in a one-pole tone control whose
+default is very dark, and its drive defaults to before the filter.
+
+1. **Tone** (new parameter 17, `tone`, appended; SETUP page): a 6 dB/oct low-pass after the
+   filter and the growl's low-mid lift, 400 Hz … 16 kHz (law 400·40^x), default 30% ≈ 1.2 kHz.
+   It replaces v1.1.0's fixed 12 dB/oct trim at 5 kHz. Smoothed and ramped like every other
+   knob.
+2. **Drive moved before the filter**, gain 1 + 12·d² (was 1 + 8·d² after the filter), level
+   compensation 0.8 / tanh(0.8·gain). Drive 100% vs 0% at the Init sound: +13 dB top-end index,
+   level within 1 dB; at Cutoff 80% the level rises up to 3 dB because more harmonics pass.
+3. **Test change:** the growl corner's Hz-style brightness check is now "> 2.5× Init" (was 3×);
+   with the default Tone it reads 172 Hz vs 64 Hz. The dB top-end checks are unchanged and pass.
+
+Measured at Cutoff 100 / Decay 90, v1.1.0 → v1.2.0 (default Tone): energy above 2 kHz relative
+to the whole sound −39.1 → −43.8 dB; body (120–500 Hz) −18.5 → −18.9 dB; level unchanged.
+Tone 0 / 30 / 100 at Cutoff 80: top-end index −43.4 / −37.1 / −31.5 dB at the same level.
+Presets peak −4.8 … −7.9 dBFS; CPU about 0.1% of one desktop core.

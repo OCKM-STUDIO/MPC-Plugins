@@ -92,7 +92,10 @@
         "empty",
         "empty",
         "empty",
-        "empty",
+        {
+          "param": "Tone",
+          "widget": "knob"
+        },
         "empty",
         "empty",
         "empty",
