@@ -14,7 +14,7 @@ SDK is the MPC Plugin SDK folder ($MPC_SDK, default /Users/simon/Projects/mpc-pl
 
 What it does:
   1. Draws the artwork into assets/ (build.py copies assets/ into Plugin Skins/):
-       panel_wave.png, panel_filter.png, panel_mod.png  worn, scratched brushed-aluminium panels (1280 x 628)
+       panel_osc.png, panel_fltenv.png, panel_lfo.png  worn, scratched brushed-aluminium panels (1280 x 628)
                                           with printed section frames, headings and knob scales
        knob.png                           127-frame film strip: black knurled knob, spun-metal cap
        toggle_on.png, toggle_off.png      worn plastic switches (on = lit amber)
@@ -143,6 +143,8 @@ FONT = {
     "Y": ["10001", "10001", "01010", "00100", "00100", "00100", "00100"],
     "-": ["00000", "00000", "00000", "01110", "00000", "00000", "00000"],
     "0": ["01110", "10001", "10011", "10101", "11001", "10001", "01110"],
+    "1": ["00100", "01100", "00100", "00100", "00100", "00100", "01110"],
+    "2": ["01110", "10001", "00001", "00010", "00100", "01000", "11111"],
     "3": ["11110", "00001", "00001", "01110", "00001", "00001", "11110"],
     " ": ["00000"] * 7,
 }
@@ -480,10 +482,10 @@ def dump_pairs(o, indent=0):
     return json.dumps(o)
 
 
-HEADINGS = {"WAVE": ["WAVETABLE", "UNISON", "PLAY", "OUT"],
-            "FILTER": ["FILTER", "AMP ENV", "MOD ENV", "ENV TO"],
-            "MOD": ["LFO", "LFO TO", "WHEEL", ""]}
-BADGES = {"WAVE": (3, 2), "FILTER": (3, 3), "MOD": (2, 2)}          # (column, row) of the empty slot that carries the name badge
+HEADINGS = {"OSC": ["OSC", "UNISON", "VOICING", "MASTER"],
+            "FLT+ENV": ["FILTER", "ENV 1 AMP", "ENV 2", "ENV 2 TO"],
+            "LFO": ["LFO 1", "LFO 1 TO", "WHEEL TO", ""]}
+BADGES = {"OSC": (3, 2), "FLT+ENV": (3, 3), "LFO": (2, 2)}          # (column, row) of the empty slot that carries the name badge
 
 TINTS = {
     # rgb: colour of the metal; lum: brightness shift; plate: label strips; background: overlay colour
@@ -527,7 +529,7 @@ def main():
     backgrounds = []
     for pi, page in enumerate(ui["pages"]):
         name = page["name"]
-        file = "panel_%s.png" % name.lower()
+        file = "panel_%s.png" % "".join(c for c in name.lower() if c.isalnum())
         print("drawing %s ..." % file)
         knobs, faders, buttons, plates = page_layout(page)
         write_png(os.path.join(ASSETS, file), draw_panel(1000 + pi, HEADINGS.get(name, ["", "", "", ""]), knobs, faders, buttons, plates,

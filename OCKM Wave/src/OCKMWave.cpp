@@ -9,14 +9,17 @@
 //
 // Signal flow (per voice):
 //
-//   note -> pitch (octave, glide, bend +-2 st, LFO vibrato)
-//        -> WAVETABLE OSC: 8 tables x 16 frames. Position picks / blends two neighbouring
+//   note -> pitch (Oct, Porta, bend +-2 st, LFO vibrato)
+//        -> WAVETABLE OSC: 8 tables x 16 frames. WT Pos picks / blends two neighbouring
 //           frames; Warp bends how the frame is read (Sync, Bend, Mirror, Quantize);
-//           Unison plays 1-5 detuned copies spread left-right.
+//           Unison plays 1-5 detuned copies, spread left-right by Width.
 //        +  SUB: a sine one octave below (read from the same band-limited tables)
 //        -> FILTER: 12 dB state-variable LP / BP / HP, one per side
-//        -> x AMP ENV x velocity
-//   sum of voices -> Output level -> L/R
+//        -> x ENV 1 (amp) x velocity
+//   sum of voices -> Master level -> L/R
+//
+// On-screen names follow common wavetable-synth wording (WT Pos, Env1 = amp envelope,
+// Env2 = mod envelope, LFO1, Width, Porta). The ids below kept their original spelling.
 //
 // Wavetables are generated from formulas the first time the plugin loads, then stored at
 // 10 brightness levels ("mipmaps") so high notes never alias. They are shared by all instances.
@@ -50,37 +53,37 @@ namespace {
 // ---------------------------------------------------------------------------
 enum ParamIndex
 {
-    kOutput = 0,   // output level, dB (param 0 is nudged by the host on load: harmless)
+    kOutput = 0,   // "Master": output level, dB (param 0 is nudged by the host on load: harmless)
     kTable,        // which wavetable (8 generated tables)
-    kPosition,     // which frame of the table, 0..100 % (blends between neighbours)
+    kPosition,     // "WT Pos": which frame of the table, 0..100 % (blends between neighbours)
     kWarp,         // how the frame is read: Off / Sync / Bend / Mirror / Quantize
     kWarpAmt,      // how strongly, % (0 = identical to Off)
     kUnison,       // 1..5 oscillator copies per voice
     kDetune,       // copies' pitch spread, % of +-50 cents
-    kSpread,       // copies' stereo spread, %
+    kSpread,       // "Width": copies' stereo spread, %
     kSub,          // sine one octave down, %
     kOctave,       // -3..+3
     kVoiceMode,    // Poly (6 voices) / Mono / Legato
-    kGlide,        // pitch slide time, ms
+    kGlide,        // "Porta": pitch slide time, ms
     kVelAmp,       // how much velocity changes loudness, %
     kFType,        // LP / BP / HP
     kCutoff,       // Hz
     kReso,         // %
     kKeyTrack,     // cutoff follows the keyboard, % (100 = 1 octave per octave)
-    kAAtk, kADec, kASus, kARel,   // amp envelope
-    kMAtk, kMDec, kMSus, kMRel,   // mod envelope
-    kEnvPos,       // mod env -> Position, +-%
-    kEnvWarp,      // mod env -> Warp Amt, +-%
-    kEnvCut,       // mod env -> cutoff, +-semitones
+    kAAtk, kADec, kASus, kARel,   // "Env1": amp envelope
+    kMAtk, kMDec, kMSus, kMRel,   // "Env2": mod envelope
+    kEnvPos,       // Env2 -> WT Pos, +-%
+    kEnvWarp,      // Env2 -> Warp Amt, +-%
+    kEnvCut,       // Env2 -> cutoff, +-semitones
     kLfoShape,     // Sine / Triangle / Saw / Square / S&H
     kLfoRate,      // Hz (Sync Off)
     kLfoSync,      // Off / On (locks to the MPC tempo and song position)
     kLfoDiv,       // note division (Sync On)
-    kLfoPos,       // LFO -> Position, % (swings +- half this around Position)
+    kLfoPos,       // LFO1 -> WT Pos, % (swings +- half this around WT Pos)
     kLfoWarp,      // LFO -> Warp Amt, %
     kLfoCut,       // LFO -> cutoff, semitones
     kLfoPitch,     // LFO -> pitch (vibrato), cents
-    kWheelPos,     // mod wheel -> Position, +-%
+    kWheelPos,     // mod wheel -> WT Pos, +-%
     kNumParams
 };
 
@@ -324,44 +327,44 @@ class OCKMWave : public mpc::Plugin
 public:
     OCKMWave() : mpc::Plugin(makeInfo())
     {
-        addParam(floatParam("output", "Output", -24.0f, 6.0f, -3.0f, "dB", 1));
-        addParam(choiceParam("table", "Table", {kTableNames[0], kTableNames[1], kTableNames[2], kTableNames[3],
+        addParam(floatParam("output", "Master", -24.0f, 6.0f, -3.0f, "dB", 1));
+        addParam(choiceParam("table", "Wavetable", {kTableNames[0], kTableNames[1], kTableNames[2], kTableNames[3],
                                                 kTableNames[4], kTableNames[5], kTableNames[6], kTableNames[7]}, 0));
-        addParam(floatParam("position", "Position", 0.0f, 100.0f, 67.0f, "%", 0));
+        addParam(floatParam("position", "WT Pos", 0.0f, 100.0f, 67.0f, "%", 0));
         addParam(choiceParam("warp", "Warp", {"Off", "Sync", "Bend", "Mirror", "Quantize"}, 0));
         addParam(floatParam("warpamt", "Warp Amt", 0.0f, 100.0f, 0.0f, "%", 0));
         addParam(intParam("unison", "Unison", 1, kMaxUnison, 1));
         addParam(floatParam("detune", "Detune", 0.0f, 100.0f, 25.0f, "%", 0));
-        addParam(floatParam("spread", "Spread", 0.0f, 100.0f, 60.0f, "%", 0));
-        addParam(floatParam("sub", "Sub Level", 0.0f, 100.0f, 0.0f, "%", 0));
-        addParam(intParam("octave", "Octave", -3, 3, 0));
-        addParam(choiceParam("voicemode", "Voice Mode", {"Poly", "Mono", "Legato"}, 0));
-        addParam(floatParam("glide", "Glide", 0.0f, 1000.0f, 0.0f, "ms", 0, 0.4f));
-        addParam(floatParam("velamp", "Vel>Amp", 0.0f, 100.0f, 50.0f, "%", 0));
-        addParam(choiceParam("ftype", "Filter", {"LP", "BP", "HP"}, 0));
+        addParam(floatParam("spread", "Width", 0.0f, 100.0f, 60.0f, "%", 0));
+        addParam(floatParam("sub", "Sub", 0.0f, 100.0f, 0.0f, "%", 0));
+        addParam(intParam("octave", "Oct", -3, 3, 0));
+        addParam(choiceParam("voicemode", "Voicing", {"Poly", "Mono", "Legato"}, 0));
+        addParam(floatParam("glide", "Porta", 0.0f, 1000.0f, 0.0f, "ms", 0, 0.4f));
+        addParam(floatParam("velamp", "Velo>Amp", 0.0f, 100.0f, 50.0f, "%", 0));
+        addParam(choiceParam("ftype", "Filter Type", {"LP", "BP", "HP"}, 0));
         addParam(logParam("cutoff", "Cutoff", 20.0f, 18000.0f, 18000.0f, "Hz", 0));
-        addParam(floatParam("reso", "Resonance", 0.0f, 100.0f, 10.0f, "%", 0));
-        addParam(floatParam("keytrack", "Key Track", 0.0f, 100.0f, 50.0f, "%", 0));
-        addParam(logParam("aatk", "Amp Attack", 1.0f, 5000.0f, 2.0f, "ms", 0));
-        addParam(logParam("adec", "Amp Decay", 1.0f, 5000.0f, 300.0f, "ms", 0));
-        addParam(floatParam("asus", "Amp Sustain", 0.0f, 100.0f, 80.0f, "%", 0));
-        addParam(logParam("arel", "Amp Release", 1.0f, 8000.0f, 250.0f, "ms", 0));
-        addParam(logParam("matk", "Mod Attack", 1.0f, 5000.0f, 2.0f, "ms", 0));
-        addParam(logParam("mdec", "Mod Decay", 1.0f, 5000.0f, 400.0f, "ms", 0));
-        addParam(floatParam("msus", "Mod Sustain", 0.0f, 100.0f, 0.0f, "%", 0));
-        addParam(logParam("mrel", "Mod Release", 1.0f, 8000.0f, 300.0f, "ms", 0));
-        addParam(floatParam("envpos", "Env>Pos", -100.0f, 100.0f, 0.0f, "%", 0));
-        addParam(floatParam("envwarp", "Env>Warp", -100.0f, 100.0f, 0.0f, "%", 0));
-        addParam(floatParam("envcut", "Env>Cutoff", -48.0f, 48.0f, 0.0f, "st", 0));
-        addParam(choiceParam("lfoshape", "LFO Shape", LFO::shapeNames(), 1));
-        addParam(logParam("lforate", "LFO Rate", 0.05f, 20.0f, 1.0f, "Hz", 2));
-        addParam(choiceParam("lfosync", "LFO Sync", {"Off", "On"}, 0));
-        addParam(choiceParam("lfodiv", "LFO Div", divisionNames(), kDivisionQuarter));
-        addParam(floatParam("lfopos", "LFO>Pos", 0.0f, 100.0f, 0.0f, "%", 0));
-        addParam(floatParam("lfowarp", "LFO>Warp", 0.0f, 100.0f, 0.0f, "%", 0));
-        addParam(floatParam("lfocut", "LFO>Cutoff", 0.0f, 48.0f, 0.0f, "st", 0));
-        addParam(floatParam("lfopitch", "LFO>Pitch", 0.0f, 100.0f, 0.0f, "ct", 0));
-        addParam(floatParam("wheelpos", "Wheel>Pos", -100.0f, 100.0f, 0.0f, "%", 0));
+        addParam(floatParam("reso", "Res", 0.0f, 100.0f, 10.0f, "%", 0));
+        addParam(floatParam("keytrack", "Key Trk", 0.0f, 100.0f, 50.0f, "%", 0));
+        addParam(logParam("aatk", "Env1 Attack", 1.0f, 5000.0f, 2.0f, "ms", 0));
+        addParam(logParam("adec", "Env1 Decay", 1.0f, 5000.0f, 300.0f, "ms", 0));
+        addParam(floatParam("asus", "Env1 Sustain", 0.0f, 100.0f, 80.0f, "%", 0));
+        addParam(logParam("arel", "Env1 Release", 1.0f, 8000.0f, 250.0f, "ms", 0));
+        addParam(logParam("matk", "Env2 Attack", 1.0f, 5000.0f, 2.0f, "ms", 0));
+        addParam(logParam("mdec", "Env2 Decay", 1.0f, 5000.0f, 400.0f, "ms", 0));
+        addParam(floatParam("msus", "Env2 Sustain", 0.0f, 100.0f, 0.0f, "%", 0));
+        addParam(logParam("mrel", "Env2 Release", 1.0f, 8000.0f, 300.0f, "ms", 0));
+        addParam(floatParam("envpos", "Env2>WT Pos", -100.0f, 100.0f, 0.0f, "%", 0));
+        addParam(floatParam("envwarp", "Env2>Warp", -100.0f, 100.0f, 0.0f, "%", 0));
+        addParam(floatParam("envcut", "Env2>Cutoff", -48.0f, 48.0f, 0.0f, "st", 0));
+        addParam(choiceParam("lfoshape", "LFO1 Shape", LFO::shapeNames(), 1));
+        addParam(logParam("lforate", "LFO1 Rate", 0.05f, 20.0f, 1.0f, "Hz", 2));
+        addParam(choiceParam("lfosync", "LFO1 BPM", {"Off", "On"}, 0));
+        addParam(choiceParam("lfodiv", "LFO1 Div", divisionNames(), kDivisionQuarter));
+        addParam(floatParam("lfopos", "LFO1>WT Pos", 0.0f, 100.0f, 0.0f, "%", 0));
+        addParam(floatParam("lfowarp", "LFO1>Warp", 0.0f, 100.0f, 0.0f, "%", 0));
+        addParam(floatParam("lfocut", "LFO1>Cutoff", 0.0f, 48.0f, 0.0f, "st", 0));
+        addParam(floatParam("lfopitch", "LFO1>Pitch", 0.0f, 100.0f, 0.0f, "ct", 0));
+        addParam(floatParam("wheelpos", "Wheel>WT Pos", -100.0f, 100.0f, 0.0f, "%", 0));
         addPrograms();
         (void)bank();                 // build the tables now, never on the audio thread
     }
@@ -445,7 +448,7 @@ private:
         const float glideMs = get(kGlide);
         s.glideCoef = glideMs < 1.0f ? 1.0f : 1.0f - std::exp(-(float)kCtrl / (glideMs * 0.001f * sr_ / 3.0f));
 
-        // Unison: copies evenly spaced from -1 to +1, detuned up to +-50 cents, panned by Spread,
+        // Unison: copies evenly spaced from -1 to +1, detuned up to +-50 cents, panned by Width,
         // and turned down by 1/sqrt(copies) so the stack stays about as loud as one copy.
         const int n = s.unison;
         const float detune = get(kDetune) * 0.01f, spread = get(kSpread) * 0.01f;
@@ -628,7 +631,7 @@ private:
         for (int c = 0; c < s.unison; ++c) v.inc[c] = std::min(hz * s.uniRatio[c] / sr_, 0.49f);
         v.subInc = std::min(0.5f * hz / sr_, 0.49f);
 
-        // Position: knob + mod env + LFO + mod wheel, ramped across the step.
+        // WT Pos: knob + Env2 + LFO + mod wheel, ramped across the step.
         const float pos = clamp(s.position + s.envPos * menv + s.lfoPos * lfo + s.wheelPos * wheel_, 0.0f, 1.0f);
         if (v.fresh) { v.pos = pos; v.fresh = false; }
         v.posStep = (pos - v.pos) / (float)n;
@@ -696,7 +699,7 @@ private:
         float pos = v.pos;
         for (int i = 0; i < n; ++i)
         {
-            // Position -> the two neighbouring frames and how far between them.
+            // WT Pos -> the two neighbouring frames and how far between them.
             pos += v.posStep;
             const float fp = clamp(pos, 0.0f, 1.0f) * (float)(kFrames - 1);
             int fi = (int)fp;
@@ -797,6 +800,88 @@ private:
                                    {kAAtk, 1}, {kADec, 180}, {kASus, 0}, {kARel, 120}, {kCutoff, 7000}});
         program("24 Vowel Bass", {{kTable, VOWELS}, {kPosition, 80}, {kVoiceMode, kMono}, {kOctave, -1}, {kEnvPos, -80},
                                   {kMAtk, 1}, {kMDec, 400}, {kMSus, 0}, {kSub, 40}, {kCutoff, 3000}});
+
+        // 25-48: show-off sounds, grouped bass / lead / keys and plucks / pads / FX and builds.
+        // Between them every parameter is used at least once (the test harness checks this).
+        enum { SINE = 0, TRI = 1, SAW = 2, SQR = 3, SH = 4 };     // LFO shapes, in shapeNames() order
+        const float kDiv16 = 4, kDiv8 = kDivisionEighth, kDiv2D = 14, kDiv1 = kDivisionBar;
+        // --- bass
+        program("25 Reese Bass", {{kPosition, 67}, {kUnison, 3}, {kDetune, 30}, {kSpread, 20}, {kVoiceMode, kMono},
+                                  {kOctave, -1}, {kSub, 30}, {kCutoff, 900}, {kReso, 20}, {kKeyTrack, 30},
+                                  {kLfoShape, SINE}, {kLfoRate, 0.25f}, {kLfoCut, 12}, {kASus, 100}, {kARel, 120}});
+        program("26 Wobble Bass", {{kPosition, 80}, {kVoiceMode, kMono}, {kOctave, -1}, {kSub, 40}, {kCutoff, 300},
+                                   {kReso, 55}, {kLfoShape, SINE}, {kLfoSync, 1}, {kLfoDiv, kDiv8}, {kLfoCut, 40},
+                                   {kLfoPos, 30}, {kASus, 100}, {kARel, 100}, {kOutput, -5}});
+        program("27 Organ Bass", {{kTable, HARM}, {kPosition, 20}, {kVoiceMode, kMono}, {kOctave, -1}, {kVelAmp, 80},
+                                  {kCutoff, 600}, {kEnvCut, 24}, {kMAtk, 1}, {kMDec, 150}, {kAAtk, 1}, {kADec, 250},
+                                  {kASus, 30}, {kARel, 80}});
+        program("28 Acid Squelch", {{kPosition, 67}, {kVoiceMode, kLegato}, {kGlide, 60}, {kOctave, -1}, {kCutoff, 250},
+                                    {kReso, 85}, {kEnvCut, 40}, {kMAtk, 1}, {kMDec, 200}, {kKeyTrack, 20}, {kVelAmp, 70},
+                                    {kASus, 100}, {kARel, 60}, {kOutput, -6}});
+        program("29 Hollow Bass", {{kTable, PULSE}, {kPosition, 30}, {kFType, 1}, {kCutoff, 700}, {kReso, 30},
+                                   {kVoiceMode, kMono}, {kOctave, -1}, {kSub, 50}, {kEnvCut, 24}, {kMAtk, 1}, {kMDec, 300},
+                                   {kASus, 90}, {kARel, 90}, {kOutput, 2}});
+        // --- lead
+        program("30 Supersaw Lead", {{kPosition, 67}, {kUnison, 5}, {kDetune, 45}, {kSpread, 90}, {kVoiceMode, kLegato},
+                                     {kGlide, 30}, {kLfoShape, SINE}, {kLfoRate, 5}, {kLfoPitch, 15}, {kCutoff, 12000},
+                                     {kAAtk, 5}, {kASus, 90}, {kARel, 300}});
+        program("31 Sync Scream", {{kTable, SYNC}, {kPosition, 10}, {kWarp, kWarpSync}, {kWarpAmt, 40}, {kEnvPos, 70},
+                                   {kMAtk, 1}, {kMDec, 800}, {kMSus, 20}, {kVoiceMode, kMono}, {kGlide, 50},
+                                   {kLfoShape, SINE}, {kLfoRate, 5.5f}, {kLfoPitch, 10}, {kCutoff, 6000}, {kReso, 30},
+                                   {kASus, 100}, {kARel, 200}, {kOutput, 1}});
+        program("32 Vowel Lead", {{kTable, VOWELS}, {kPosition, 20}, {kWheelPos, 80}, {kVoiceMode, kLegato}, {kGlide, 40},
+                                  {kLfoShape, TRI}, {kLfoRate, 4.5f}, {kLfoPitch, 12}, {kUnison, 2}, {kDetune, 10},
+                                  {kASus, 100}, {kARel, 250}});
+        // --- keys and plucks
+        program("33 House Organ", {{kTable, HARM}, {kPosition, 45}, {kWarp, kWarpMirror}, {kWarpAmt, 50}, {kVelAmp, 60},
+                                   {kFType, 2}, {kCutoff, 150}, {kReso, 0}, {kAAtk, 1}, {kADec, 200}, {kASus, 80}, {kARel, 60}});
+        program("34 FM Marimba", {{kTable, FM}, {kPosition, 20}, {kEnvPos, 50}, {kMAtk, 1}, {kMDec, 200}, {kVelAmp, 90},
+                                  {kCutoff, 8000}, {kKeyTrack, 100}, {kAAtk, 1}, {kADec, 600}, {kASus, 0}, {kARel, 400}});
+        program("35 Glass Keys", {{kTable, FM}, {kPosition, 40}, {kWarp, kWarpMirror}, {kWarpAmt, 30}, {kUnison, 2},
+                                  {kDetune, 8}, {kEnvPos, 40}, {kMAtk, 1}, {kMDec, 900}, {kLfoShape, SINE}, {kLfoRate, 4},
+                                  {kLfoPitch, 5}, {kAAtk, 1}, {kADec, 1500}, {kASus, 20}, {kARel, 800}});
+        program("36 Dub Chord", {{kPosition, 67}, {kFType, 1}, {kCutoff, 900}, {kReso, 40}, {kEnvCut, 24}, {kMAtk, 1},
+                                 {kMDec, 250}, {kUnison, 2}, {kDetune, 12}, {kVelAmp, 70}, {kLfoShape, TRI}, {kLfoSync, 1},
+                                 {kLfoDiv, kDiv2D}, {kLfoCut, 12}, {kAAtk, 1}, {kADec, 350}, {kASus, 0}, {kARel, 400}});
+        program("37 Trance Pluck", {{kPosition, 67}, {kUnison, 4}, {kDetune, 30}, {kSpread, 80}, {kCutoff, 500},
+                                    {kReso, 30}, {kEnvCut, 40}, {kMAtk, 1}, {kMDec, 220}, {kAAtk, 1}, {kADec, 400},
+                                    {kASus, 0}, {kARel, 300}});
+        program("38 Random Steps", {{kTable, STEPS}, {kPosition, 30}, {kLfoShape, SH}, {kLfoSync, 1}, {kLfoDiv, kDiv16},
+                                    {kLfoPos, 70}, {kLfoCut, 18}, {kCutoff, 3000}, {kReso, 35}, {kAAtk, 1}, {kADec, 200},
+                                    {kASus, 0}, {kARel, 150}});
+        // --- pads
+        program("39 Saw Strings", {{kPosition, 67}, {kUnison, 4}, {kDetune, 20}, {kSpread, 100}, {kCutoff, 3500},
+                                   {kKeyTrack, 80}, {kLfoShape, SINE}, {kLfoRate, 4.5f}, {kLfoPitch, 6}, {kAAtk, 400},
+                                   {kADec, 1000}, {kASus, 90}, {kARel, 1500}});
+        program("40 Choir Pad", {{kTable, VOWELS}, {kPosition, 60}, {kUnison, 3}, {kDetune, 15}, {kSpread, 90},
+                                 {kLfoShape, SINE}, {kLfoRate, 0.12f}, {kLfoPos, 40}, {kCutoff, 6000}, {kAAtk, 600},
+                                 {kADec, 1000}, {kASus, 90}, {kARel, 2000}});
+        program("41 Evolving Pad", {{kTable, HARM}, {kPosition, 10}, {kEnvPos, 80}, {kMAtk, 4000}, {kMSus, 100},
+                                    {kMRel, 3000}, {kWarp, kWarpBend}, {kWarpAmt, 20}, {kLfoShape, TRI}, {kLfoRate, 0.2f},
+                                    {kLfoWarp, 30}, {kUnison, 3}, {kDetune, 20}, {kSpread, 100}, {kAAtk, 1500},
+                                    {kADec, 1000}, {kASus, 90}, {kARel, 3000}});
+        program("42 Dark Drone", {{kTable, FOLD}, {kPosition, 30}, {kOctave, -1}, {kUnison, 3}, {kDetune, 15},
+                                  {kLfoShape, TRI}, {kLfoRate, 0.07f}, {kLfoPos, 60}, {kLfoCut, 12}, {kCutoff, 700},
+                                  {kReso, 40}, {kAAtk, 2000}, {kASus, 100}, {kARel, 4000}});
+        program("43 Air Pad", {{kPosition, 67}, {kFType, 2}, {kCutoff, 1500}, {kReso, 20}, {kUnison, 5}, {kDetune, 35},
+                               {kSpread, 100}, {kLfoShape, SINE}, {kLfoSync, 1}, {kLfoDiv, kDiv1}, {kLfoCut, 12},
+                               {kAAtk, 800}, {kADec, 1000}, {kASus, 80}, {kARel, 2500}});
+        // --- FX and builds
+        program("44 Riser", {{kTable, SYNC}, {kPosition, 0}, {kEnvPos, 100}, {kWarp, kWarpSync}, {kEnvWarp, 60},
+                             {kEnvCut, 36}, {kCutoff, 300}, {kMAtk, 5000}, {kMSus, 100}, {kMRel, 1500}, {kUnison, 3},
+                             {kDetune, 30}, {kSpread, 100}, {kLfoShape, SINE}, {kLfoRate, 6}, {kLfoPitch, 40},
+                             {kAAtk, 3000}, {kASus, 100}, {kARel, 1500}, {kOutput, 0}});
+        program("45 Laser Zap", {{kTable, FM}, {kPosition, 100}, {kEnvPos, -100}, {kMAtk, 1}, {kMDec, 150},
+                                 {kVoiceMode, kMono}, {kCutoff, 400}, {kReso, 80}, {kEnvCut, 48}, {kAAtk, 1}, {kADec, 250},
+                                 {kASus, 0}, {kARel, 100}, {kOutput, -6}});
+        program("46 Rave Stab", {{kTable, HARM}, {kPosition, 70}, {kWarp, kWarpMirror}, {kWarpAmt, 60}, {kUnison, 3},
+                                 {kDetune, 35}, {kSpread, 70}, {kCutoff, 2000}, {kEnvCut, 24}, {kMAtk, 1}, {kMDec, 200},
+                                 {kVelAmp, 80}, {kAAtk, 1}, {kADec, 300}, {kASus, 0}, {kARel, 250}});
+        program("47 Bleep", {{kPosition, 0}, {kOctave, 1}, {kWarp, kWarpSync}, {kEnvWarp, 60}, {kMAtk, 1}, {kMDec, 80},
+                             {kAAtk, 1}, {kADec, 120}, {kASus, 0}, {kARel, 60}});
+        program("48 Trance Gate", {{kPosition, 67}, {kUnison, 2}, {kDetune, 15}, {kCutoff, 400}, {kReso, 20},
+                                   {kLfoShape, SQR}, {kLfoSync, 1}, {kLfoDiv, kDiv16}, {kLfoCut, 36}, {kAAtk, 10},
+                                   {kASus, 100}, {kARel, 300}});
     }
 
     static mpc::PluginInfo makeInfo()

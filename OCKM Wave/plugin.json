@@ -1,7 +1,7 @@
 {
   "name": "OCKM Wave",
   "manufacturer": "OCKM",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "format": "vst2",
   "kind": "instrument",
   "uid": "O57W",
@@ -10,7 +10,7 @@
   "category": "Synth",
   "file32": "VST/ockm-wave-arm32.so",
   "file64": "VST/ockm-wave-arm64.so",
-  "description": "Wavetable synth that teaches as you play: 8 generated wavetables, position morph, warp, unison, sub, filter, 2 envelopes, 1 LFO and 24 lesson presets.",
+  "description": "Wavetable synth that teaches as you play: 8 generated wavetables, position morph, warp, unison, sub, filter, 2 envelopes, 1 LFO, 16 lesson presets and 32 house and techno sounds.",
   "author": "OCKM",
   "url": "",
   "license": "MIT"

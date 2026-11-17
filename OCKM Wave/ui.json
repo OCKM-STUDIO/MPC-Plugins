@@ -13,10 +13,10 @@
   },
   "pages": [
     {
-      "name": "WAVE",
+      "name": "OSC",
       "controls": [
         {
-          "param": "Table",
+          "param": "Wavetable",
           "widget": "slider",
           "overlay": "menu"
         },
@@ -25,15 +25,15 @@
           "widget": "knob"
         },
         {
-          "param": "Voice Mode",
+          "param": "Voicing",
           "widget": "switch"
         },
         {
-          "param": "Output",
+          "param": "Master",
           "widget": "fader"
         },
         {
-          "param": "Position",
+          "param": "WT Pos",
           "widget": "knob"
         },
         {
@@ -41,7 +41,7 @@
           "widget": "knob"
         },
         {
-          "param": "Glide",
+          "param": "Porta",
           "widget": "knob"
         },
         {
@@ -53,11 +53,11 @@
           "overlay": "menu"
         },
         {
-          "param": "Spread",
+          "param": "Width",
           "widget": "knob"
         },
         {
-          "param": "Octave",
+          "param": "Oct",
           "widget": "knob",
           "polarity": "bipolar"
         },
@@ -69,11 +69,11 @@
           "widget": "knob"
         },
         {
-          "param": "Sub Level",
+          "param": "Sub",
           "widget": "fader"
         },
         {
-          "param": "Vel>Amp",
+          "param": "Velo>Amp",
           "widget": "knob"
         },
         {
@@ -82,22 +82,22 @@
       ]
     },
     {
-      "name": "FILTER",
+      "name": "FLT+ENV",
       "controls": [
         {
-          "param": "Filter",
+          "param": "Filter Type",
           "widget": "switch"
         },
         {
-          "param": "Amp Attack",
+          "param": "Env1 Attack",
           "widget": "fader"
         },
         {
-          "param": "Mod Attack",
+          "param": "Env2 Attack",
           "widget": "fader"
         },
         {
-          "param": "Env>Pos",
+          "param": "Env2>WT Pos",
           "widget": "knob",
           "polarity": "bipolar"
         },
@@ -106,45 +106,45 @@
           "widget": "knob"
         },
         {
-          "param": "Amp Decay",
+          "param": "Env1 Decay",
           "widget": "fader"
         },
         {
-          "param": "Mod Decay",
+          "param": "Env2 Decay",
           "widget": "fader"
         },
         {
-          "param": "Env>Warp",
+          "param": "Env2>Warp",
           "widget": "knob",
           "polarity": "bipolar"
         },
         {
-          "param": "Resonance",
+          "param": "Res",
           "widget": "knob"
         },
         {
-          "param": "Amp Sustain",
+          "param": "Env1 Sustain",
           "widget": "fader"
         },
         {
-          "param": "Mod Sustain",
+          "param": "Env2 Sustain",
           "widget": "fader"
         },
         {
-          "param": "Env>Cutoff",
+          "param": "Env2>Cutoff",
           "widget": "knob",
           "polarity": "bipolar"
         },
         {
-          "param": "Key Track",
+          "param": "Key Trk",
           "widget": "knob"
         },
         {
-          "param": "Amp Release",
+          "param": "Env1 Release",
           "widget": "fader"
         },
         {
-          "param": "Mod Release",
+          "param": "Env2 Release",
           "widget": "fader"
         },
         {
@@ -153,19 +153,19 @@
       ]
     },
     {
-      "name": "MOD",
+      "name": "LFO",
       "controls": [
         {
-          "param": "LFO Shape",
+          "param": "LFO1 Shape",
           "widget": "slider",
           "overlay": "menu"
         },
         {
-          "param": "LFO>Pos",
+          "param": "LFO1>WT Pos",
           "widget": "knob"
         },
         {
-          "param": "Wheel>Pos",
+          "param": "Wheel>WT Pos",
           "widget": "knob",
           "polarity": "bipolar"
         },
@@ -173,11 +173,11 @@
           "widget": "empty"
         },
         {
-          "param": "LFO Sync",
+          "param": "LFO1 BPM",
           "widget": "switch"
         },
         {
-          "param": "LFO>Warp",
+          "param": "LFO1>Warp",
           "widget": "knob"
         },
         {
@@ -187,15 +187,15 @@
           "widget": "empty"
         },
         {
-          "param": "LFO Rate",
+          "param": "LFO1 Rate",
           "widget": "knob",
           "visibleWhen": {
-            "param": "LFO Sync",
+            "param": "LFO1 BPM",
             "choice": "Off"
           }
         },
         {
-          "param": "LFO>Cutoff",
+          "param": "LFO1>Cutoff",
           "widget": "knob"
         },
         {
@@ -205,16 +205,16 @@
           "widget": "empty"
         },
         {
-          "param": "LFO Div",
+          "param": "LFO1 Div",
           "widget": "slider",
           "overlay": "menu",
           "visibleWhen": {
-            "param": "LFO Sync",
+            "param": "LFO1 BPM",
             "choice": "On"
           }
         },
         {
-          "param": "LFO>Pitch",
+          "param": "LFO1>Pitch",
           "widget": "knob"
         },
         {

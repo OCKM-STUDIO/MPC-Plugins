@@ -1356,7 +1356,7 @@
     "tabs": [
       {
         "version": 1,
-        "tabName": "WAVE",
+        "tabName": "OSC",
         "fnKeyIndex": 0,
         "fnKeySubIndex": 0,
         "componentDefinition": {
@@ -1367,12 +1367,12 @@
             "focussed": {
               "version": 1,
               "colour": "ffb3ab96",
-              "image": "panel_wave.png"
+              "image": "panel_osc.png"
             },
             "unfocussed": {
               "version": 1,
               "colour": "ffb3ab96",
-              "image": "panel_wave.png"
+              "image": "panel_osc.png"
             }
           },
           "ignoreMousePresses": false,
@@ -1382,7 +1382,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "Table",
+                "name": "Wavetable",
                 "type": "sliderWithFocusMenu",
                 "data": {
                   "version": 1,
@@ -1440,7 +1440,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "Voice Mode",
+                "name": "Voicing",
                 "type": "radio3",
                 "data": {
                   "version": 1,
@@ -1469,7 +1469,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "Voice Mode seg 0",
+                "name": "Voicing seg 0",
                 "type": "Label",
                 "data": {
                   "version": 1,
@@ -1507,7 +1507,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "Voice Mode seg 1",
+                "name": "Voicing seg 1",
                 "type": "Label",
                 "data": {
                   "version": 1,
@@ -1545,7 +1545,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "Voice Mode seg 2",
+                "name": "Voicing seg 2",
                 "type": "Label",
                 "data": {
                   "version": 1,
@@ -1583,7 +1583,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "Output",
+                "name": "Master",
                 "type": "faderUni",
                 "data": {
                   "version": 1,
@@ -1612,7 +1612,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "Position",
+                "name": "WT Pos",
                 "type": "knobUni",
                 "data": {
                   "version": 1,
@@ -1670,7 +1670,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "Glide",
+                "name": "Porta",
                 "type": "knobUni",
                 "data": {
                   "version": 1,
@@ -1728,7 +1728,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "Spread",
+                "name": "Width",
                 "type": "knobUni",
                 "data": {
                   "version": 1,
@@ -1757,7 +1757,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "Octave",
+                "name": "Oct",
                 "type": "knobBi",
                 "data": {
                   "version": 1,
@@ -1815,7 +1815,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "Sub Level",
+                "name": "Sub",
                 "type": "faderUni",
                 "data": {
                   "version": 1,
@@ -1844,7 +1844,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "Vel>Amp",
+                "name": "Velo>Amp",
                 "type": "knobUni",
                 "data": {
                   "version": 1,
@@ -1880,7 +1880,7 @@
       },
       {
         "version": 1,
-        "tabName": "FILTER",
+        "tabName": "FLT+ENV",
         "fnKeyIndex": 1,
         "fnKeySubIndex": 0,
         "componentDefinition": {
@@ -1891,12 +1891,12 @@
             "focussed": {
               "version": 1,
               "colour": "ffb3ab96",
-              "image": "panel_filter.png"
+              "image": "panel_fltenv.png"
             },
             "unfocussed": {
               "version": 1,
               "colour": "ffb3ab96",
-              "image": "panel_filter.png"
+              "image": "panel_fltenv.png"
             }
           },
           "ignoreMousePresses": false,
@@ -1906,7 +1906,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "Filter",
+                "name": "Filter Type",
                 "type": "radio3",
                 "data": {
                   "version": 1,
@@ -1935,7 +1935,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "Filter seg 0",
+                "name": "Filter Type seg 0",
                 "type": "Label",
                 "data": {
                   "version": 1,
@@ -1973,7 +1973,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "Filter seg 1",
+                "name": "Filter Type seg 1",
                 "type": "Label",
                 "data": {
                   "version": 1,
@@ -2011,7 +2011,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "Filter seg 2",
+                "name": "Filter Type seg 2",
                 "type": "Label",
                 "data": {
                   "version": 1,
@@ -2049,7 +2049,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "Amp Attack",
+                "name": "Env1 Attack",
                 "type": "faderUni",
                 "data": {
                   "version": 1,
@@ -2078,7 +2078,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "Mod Attack",
+                "name": "Env2 Attack",
                 "type": "faderUni",
                 "data": {
                   "version": 1,
@@ -2107,7 +2107,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "Env>Pos",
+                "name": "Env2>WT Pos",
                 "type": "knobBi",
                 "data": {
                   "version": 1,
@@ -2165,7 +2165,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "Amp Decay",
+                "name": "Env1 Decay",
                 "type": "faderUni",
                 "data": {
                   "version": 1,
@@ -2194,7 +2194,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "Mod Decay",
+                "name": "Env2 Decay",
                 "type": "faderUni",
                 "data": {
                   "version": 1,
@@ -2223,7 +2223,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "Env>Warp",
+                "name": "Env2>Warp",
                 "type": "knobBi",
                 "data": {
                   "version": 1,
@@ -2252,7 +2252,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "Resonance",
+                "name": "Res",
                 "type": "knobUni",
                 "data": {
                   "version": 1,
@@ -2281,7 +2281,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "Amp Sustain",
+                "name": "Env1 Sustain",
                 "type": "faderUni",
                 "data": {
                   "version": 1,
@@ -2310,7 +2310,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "Mod Sustain",
+                "name": "Env2 Sustain",
                 "type": "faderUni",
                 "data": {
                   "version": 1,
@@ -2339,7 +2339,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "Env>Cutoff",
+                "name": "Env2>Cutoff",
                 "type": "knobBi",
                 "data": {
                   "version": 1,
@@ -2368,7 +2368,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "Key Track",
+                "name": "Key Trk",
                 "type": "knobUni",
                 "data": {
                   "version": 1,
@@ -2397,7 +2397,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "Amp Release",
+                "name": "Env1 Release",
                 "type": "faderUni",
                 "data": {
                   "version": 1,
@@ -2426,7 +2426,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "Mod Release",
+                "name": "Env2 Release",
                 "type": "faderUni",
                 "data": {
                   "version": 1,
@@ -2462,7 +2462,7 @@
       },
       {
         "version": 1,
-        "tabName": "MOD",
+        "tabName": "LFO",
         "fnKeyIndex": 2,
         "fnKeySubIndex": 0,
         "componentDefinition": {
@@ -2473,12 +2473,12 @@
             "focussed": {
               "version": 1,
               "colour": "ffb3ab96",
-              "image": "panel_mod.png"
+              "image": "panel_lfo.png"
             },
             "unfocussed": {
               "version": 1,
               "colour": "ffb3ab96",
-              "image": "panel_mod.png"
+              "image": "panel_lfo.png"
             }
           },
           "ignoreMousePresses": false,
@@ -2488,7 +2488,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "LFO Shape",
+                "name": "LFO1 Shape",
                 "type": "sliderWithFocusMenu",
                 "data": {
                   "version": 1,
@@ -2517,7 +2517,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "LFO>Pos",
+                "name": "LFO1>WT Pos",
                 "type": "knobUni",
                 "data": {
                   "version": 1,
@@ -2546,7 +2546,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "Wheel>Pos",
+                "name": "Wheel>WT Pos",
                 "type": "knobBi",
                 "data": {
                   "version": 1,
@@ -2575,7 +2575,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "LFO Sync",
+                "name": "LFO1 BPM",
                 "type": "toggle",
                 "data": {
                   "version": 1,
@@ -2604,7 +2604,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "LFO>Warp",
+                "name": "LFO1>Warp",
                 "type": "knobUni",
                 "data": {
                   "version": 1,
@@ -2633,7 +2633,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "LFO Rate",
+                "name": "LFO1 Rate",
                 "type": "knobUni",
                 "data": {
                   "version": 1,
@@ -2665,7 +2665,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "LFO>Cutoff",
+                "name": "LFO1>Cutoff",
                 "type": "knobUni",
                 "data": {
                   "version": 1,
@@ -2694,7 +2694,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "LFO Div",
+                "name": "LFO1 Div",
                 "type": "sliderWithFocusMenu",
                 "data": {
                   "version": 1,
@@ -2726,7 +2726,7 @@
               "version": 2,
               "componentData": {
                 "version": 1,
-                "name": "LFO>Pitch",
+                "name": "LFO1>Pitch",
                 "type": "knobUni",
                 "data": {
                   "version": 1,

@@ -290,3 +290,17 @@ Memory: 8 tables × 16 frames × ~5,400 floats ≈ 2.6 MB (build: measured), sha
   case 0.70%. Estimated MPC One (×20): about 4.5%, 6% and 14%. Not yet measured on hardware.
 - The sub is a sine read from the Shapes table's first frame, so it shares the alias-free tables.
 - All sound off (CC 120) fades every voice out in 5 ms; all notes off (CC 123) uses the release.
+
+## 13. Version 1.1 (after Simon's first look)
+
+- **On-screen names now follow common wavetable-synth wording**, so they match the synth Simon
+  already knows: Master, Wavetable, WT Pos, Width, Sub, Oct, Voicing, Porta, Velo>Amp, Filter Type,
+  Res, Key Trk, Env1 / Env2 (amp / mod envelope), Env2>…, LFO1 …, LFO1 BPM, LFO1>…, Wheel>WT Pos.
+  Pages are OSC, FLT+ENV and LFO. Only display names changed: parameter ids, order, ranges and
+  defaults are untouched, so projects saved with 1.0 load unchanged.
+- **24 more presets (25–48)**: bass, lead, keys and plucks, pads, FX and builds. Presets 01–24 are
+  unchanged and keep their numbers (projects store the program number).
+- Every preset stores all 37 values, and choosing one writes all 37. The harness checks this
+  (scrambles every control, loads each preset, compares with a fresh load) and checks that every
+  parameter is used by at least one preset.
+

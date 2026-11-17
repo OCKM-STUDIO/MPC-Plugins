@@ -130,10 +130,45 @@ int main(int argc, char** argv)
         check(ok, "program 01 Init Saw equals the parameter defaults");
     }
 
+    // 1b. Choosing a preset sets EVERY parameter: scramble all knobs first, then load the preset,
+    //     and compare with a fresh plugin that loaded the same preset.
+    {
+        OCKMWave ref;
+        bool ok = true;
+        for (int prog = 0; prog < ref.numPrograms(); ++prog)
+        {
+            OCKMWave a, b;
+            for (int i = 0; i < a.numParams(); ++i) { const auto& q = a.param(i); a.set(i, q.min + 0.37f * (q.max - q.min)); }
+            a.setProgram(prog); b.setProgram(prog);
+            for (int i = 0; i < a.numParams(); ++i)
+                if (std::fabs(a.get(i) - b.get(i)) > 1e-4f * std::max(1.0f, std::fabs(b.get(i)))) { ok = false;
+                    printf("      %s leaves %s unchanged\n", a.programName(prog), a.param(i).name.c_str()); }
+        }
+        printf("      %d presets\n", ref.numPrograms());
+        check(ok, "choosing any preset sets every one of the 37 parameters");
+        check(ref.numPrograms() == 48, "48 presets");
+    }
+
+    // 1c. Every parameter is used (moved from its default) by at least one preset.
+    {
+        OCKMWave p;
+        std::vector<bool> used((size_t)p.numParams(), false);
+        for (int prog = 0; prog < p.numPrograms(); ++prog)
+        {
+            p.setProgram(prog);
+            for (int i = 0; i < p.numParams(); ++i)
+                if (std::fabs(p.get(i) - p.param(i).def) > 1e-3f * std::max(1.0f, std::fabs(p.param(i).def))) used[(size_t)i] = true;
+        }
+        bool ok = true;
+        for (int i = 0; i < p.numParams(); ++i) if (!used[(size_t)i]) { ok = false; printf("      no preset uses %s\n", p.param(i).name.c_str()); }
+        check(ok, "every parameter is used by at least one preset");
+    }
+
     // 2. Every preset: 4-note chord at velocity 127 peaks below 0 dBFS, sounds, no NaN, no denormal tail.
     {
         bool okPeak = true, okSound = true, okFinite = true;
-        for (int prog = 0; prog < 24; ++prog)
+        OCKMWave counter;
+        for (int prog = 0; prog < counter.numPrograms(); ++prog)
         {
             OCKMWave p; p.setProgram(prog); start(p);
             std::vector<Ev> evs = {cc(0, 1, 127)};
@@ -310,7 +345,8 @@ int main(int argc, char** argv)
     if (argc > 1)
     {
         std::vector<float> L, R;
-        for (int prog = 0; prog < 24; ++prog)
+        OCKMWave counter;
+        for (int prog = 0; prog < counter.numPrograms(); ++prog)
         {
             OCKMWave p; p.setProgram(prog); start(p);
             const bool mono = p.getInt(kVoiceMode) != kPoly;
@@ -332,7 +368,7 @@ int main(int argc, char** argv)
             L.insert(L.end(), r.L.begin(), r.L.end()); R.insert(R.end(), r.R.begin(), r.R.end());
         }
         writeWav(argv[1], L, R);
-        printf("      wrote %s (%.0f s, presets 01-24 in order, about 4.8 s each)\n", argv[1], L.size() / SR);
+        printf("      wrote %s (%.0f s, presets 01-48 in order, about 4.8 s each)\n", argv[1], L.size() / SR);
     }
 
     printf(fails ? "\n%d FAILED\n" : "\nALL PASS\n", fails);
