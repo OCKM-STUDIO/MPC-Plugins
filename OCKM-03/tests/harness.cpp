@@ -116,8 +116,9 @@ int main(int argc, char** argv)
         bool hidden = true; for (int i = kSquelch; i <= kGrRes; ++i) hidden = hidden && !a.param(i).automatable;
         bool live = true;   for (int i = 0; i < kSquelch; ++i) live = live && a.param(i).automatable;
         bool mut = true; for (int i = kMuOct; i <= kMuVar; ++i) mut = mut && a.param(i).automatable;
-        check(hidden && live && mut && a.param(kEcho).automatable && a.numParams() == 31,
-              "31 parameters: the 11 classic, 4 Mutate and Echo are automatable, 15 retired are not");
+        bool pat = true; for (int i = kPtMode; i <= kFullBass; ++i) pat = pat && a.param(i).automatable;
+        check(hidden && live && mut && pat && a.param(kEcho).automatable && a.numParams() == 42,
+              "42 parameters: the 11 classic, 4 Mutate, Echo, 8 Pattern and 3 Grit are automatable, 15 retired are not");
     }
     // 3b. Arp: every note at full velocity (all accented). The classic knobs must still work.
     {
@@ -234,7 +235,7 @@ int main(int argc, char** argv)
 
         // 5i. Every preset with Mutate pushed hard still never clips.
         { float worst = 0; gTransport = true;
-          for (int prog = 0; prog < 5; ++prog)
+          for (int prog = 0; prog < 8; ++prog)
           { OCKM03 p; p.setProgram(prog); p.set(kMuOct, 100); p.set(kMuSld, 100); p.set(kMuRst, 30);
             auto x = render(p, pattern, 64 * step); worst = std::fmax(worst, peak(x, 0, (int)x.size())); }
           gTransport = false;
@@ -285,7 +286,7 @@ int main(int argc, char** argv)
           check(wetLo / wetHi < 0.5f * dryLo / dryHi, "Echo repeats are bass-light (the bass stays dry and solid)"); }
         // 6f. Every preset with Echo at maximum still never clips.
         { float worst = 0;
-          for (int prog = 0; prog < 5; ++prog) { OCKM03 p; p.setProgram(prog); p.set(kEcho, 100); auto x = render(p, pattern, 64 * step); worst = std::fmax(worst, peak(x, 0, (int)x.size())); }
+          for (int prog = 0; prog < 8; ++prog) { OCKM03 p; p.setProgram(prog); p.set(kEcho, 100); auto x = render(p, pattern, 64 * step); worst = std::fmax(worst, peak(x, 0, (int)x.size())); }
           printf("      worst preset peak with Echo at max: %.2f dBFS\n", 20 * std::log10(worst));
           check(worst < 1.0f, "every preset with Echo at maximum peaks below 0 dBFS"); }
         gTransport = false;
@@ -354,6 +355,139 @@ int main(int argc, char** argv)
         printf("      late brightness of a held note: Env Mod 0 %.4f, Env Mod 100 %.4f\n", b0, b100);
         check(b100 < b0 * 0.9f, "Env Mod also lowers the resting cutoff (the sweep goes below the knob too)");
     }
+    // 3g. v1.5 Pattern generator.
+    {
+        // Exact and nested amounts, straight from the generator.
+        bool exact = true, nested = true;
+        for (int seed = 1; seed <= 40; ++seed)
+        {
+            int c8 = 0, c4 = 0;
+            for (int st = 0; st < 16; ++st)
+            {
+                c8 += Pattern::plays(st, 16, seed, 0.5f); c4 += Pattern::plays(st, 16, seed, 0.25f);
+                if (Pattern::plays(st, 16, seed, 0.3f) && !Pattern::plays(st, 16, seed, 0.6f)) nested = false;
+                const PatternStep lo = Pattern::at(st, 16, seed, 1.0f, 0.3f, 0.3f, 2, 0), hi = Pattern::at(st, 16, seed, 1.0f, 0.6f, 0.6f, 3, 0);
+                if ((lo.accent && !hi.accent) || (lo.slide && !hi.slide)) nested = false;
+            }
+            if (c8 != 8 || c4 != 4) exact = false;
+        }
+        check(exact, "Pattern: Density 50% plays exactly 8 and 25% exactly 4 of 16 steps (40 Pattern #s)");
+        check(nested, "Pattern: turning Density, Accent or Slide up only adds steps");
+        bool inScale = true;
+        for (int seed = 1; seed <= 20; ++seed) for (int st = 0; st < 32; ++st)
+        { const int d = Pattern::at(st, 32, seed, 1.0f, 0, 0, 1, 3).semis; if (d != 0 && d != 3 && d != 5 && d != 7 && d != 10) inScale = false; }
+        check(inScale, "Pattern: Minor Pent lines use only its five notes (Range 1)");
+
+        gTransport = true;
+        const int bar = 16 * step;
+        auto held = [&](int note, int bars) { return std::vector<Ev>{{0, note, 100, true}, {bars * bar, note, 0, false}}; };
+        auto setup = [&](OCKM03& p) { p.set(kPtMode, 1); p.set(kPtSld, 0); p.set(kPtAcc, 0); p.set(kReso, 0); p.set(kCutoff, 70); p.set(kEnvMod, 0); };
+        { OCKM03 a; setup(a); auto x1 = render(a, held(36, 2), 2 * bar);
+          OCKM03 b; setup(b); auto x2 = render(b, held(36, 2), 2 * bar);
+          OCKM03 c; setup(c); c.set(kPtSeed, 2); auto x3 = render(c, held(36, 2), 2 * bar);
+          check(x1 == x2 && x1 != x3, "Pattern: the same Pattern # gives the same line, another gives a different one"); }
+        { OCKM03 a; a.setProgram(1); auto x1 = render(a, pattern, 16 * step);
+          OCKM03 b; b.setProgram(1); b.set(kPtSeed, 500); b.set(kPtDen, 10); b.set(kPtLen, 5); b.set(kPtRng, 3); b.set(kPtScl, 2);
+          auto x2 = render(b, pattern, 16 * step);
+          check(x1 == x2, "Pattern Off: the Pattern knobs change nothing (plays as v1.4)"); }
+        { OCKM03 a; setup(a); auto x = render(a, {}, 2 * bar);
+          check(peak(x, 0, (int)x.size()) == 0.0f, "Pattern Hold: silent while no note is held"); }
+        { OCKM03 a; a.setProgram(6); a.set(kEcho, 0); a.set(kMuOct, 100); a.set(kPtRng, 3); a.set(kPtSld, 100); auto x = render(a, held(36, 2), 3 * bar);
+          check(peak(x, 2 * bar + 4410, 3 * bar) < 1e-4f, "Pattern Hold: releasing the note stops the line (no hanging note, even with slides and Mutate)"); }
+        // Which steps start a note: energy in the first quarter of each step against the last quarter of the previous one.
+        auto onsets = [&](const std::vector<float>& x, int steps) { std::vector<int> o(steps);
+            for (int k = 0; k < steps; ++k) o[k] = rms(x, k * step + 100, k * step + step / 4) > 0.01f; return o; };
+        { OCKM03 a; setup(a); a.set(kPtDen, 50); a.set(kPtSeed, 9); auto x = render(a, held(36, 4), 4 * bar);
+          auto o = onsets(x, 64); bool ok = true; int n = 0;
+          for (int k = 0; k < 64; ++k) { n += o[k]; if (o[k] != (int)Pattern::plays(k % 16, 16, 9, 0.5f)) ok = false; }
+          printf("      Density 50%%, 4 bars: %d notes\n", n);
+          check(ok, "Pattern: notes land on the predicted 16ths of the MPC grid, the same in every bar"); }
+        { OCKM03 a; setup(a); a.set(kPtDen, 50); a.set(kPtLen, 12); a.set(kPtSeed, 3); auto x = render(a, held(36, 4), 4 * bar);
+          auto o = onsets(x, 60); bool ok = true;
+          for (int k = 0; k < 60; ++k) if (o[k] != (int)Pattern::plays(k % 12, 12, 3, 0.5f)) ok = false;
+          check(ok, "Pattern: Length 12 repeats every 12 steps (follows the song's 16ths)"); }
+        { auto zc = [&](int note) { OCKM03 a; setup(a); a.set(kPtDen, 100); auto x = render(a, held(note, 1), bar);
+              int z = 0; for (int i = 1; i < bar; ++i) if (x[i - 1] < 0 && x[i] >= 0) ++z; return z; };
+          const int z36 = zc(36), z48 = zc(48);
+          printf("      zero crossings holding C1 %d, C2 %d\n", z36, z48);
+          check(z48 > z36 * 1.8 && z48 < z36 * 2.2, "Pattern: the held note transposes the line (an octave up doubles the pitch)"); }
+        { auto bright = [](const std::vector<float>& x, int a, int b) { double h = 0, e = 0; for (int i = a + 1; i < b; ++i) { float d = x[i] - x[i - 1]; h += d * d; e += x[i] * x[i]; } return e > 0 ? (float)std::sqrt(h / e) : 0.f; };
+          auto avgB = [&](float sld) { OCKM03 a; setup(a); a.set(kCutoff, 50); a.set(kEnvMod, 80); a.set(kDecay, 20); a.set(kPtDen, 100); a.set(kPtSld, sld);
+              auto x = render(a, held(36, 1), bar); double t = 0; for (int k = 4; k < 14; ++k) t += bright(x, k * step + 300, k * step + 2000); return (float)(t / 10); };
+          const float b0 = avgB(0), b100 = avgB(100);
+          printf("      Pattern brightness, Slide 0 %.4f, Slide 100 %.4f\n", b0, b100);
+          check(b100 < b0 * 0.85f, "Pattern: slide steps glide without re-plucking the filter"); }
+        { OCKM03 a; setup(a); a.set(kPtDen, 100); a.set(kMuRst, 40); a.set(kMuVar, 5); auto x = render(a, held(36, 2), 2 * bar);
+          auto o = onsets(x, 32); bool ok = true;
+          for (int k = 0; k < 32; ++k) if (o[k] != (int)!Mutator::decide(k % 16, 5, 0, 0, 0.4f).rest) ok = false;
+          check(ok, "Pattern + Add Rest: Mutate rests the predicted steps of the generated line"); }
+        { OCKM03 a; a.setProgram(6); auto x1 = render(a, held(36, 2), 2 * bar, 128);
+          OCKM03 b; b.setProgram(6); auto x2 = render(b, held(36, 2), 2 * bar, 37);
+          OCKM03 c; c.setProgram(6); auto x3 = render(c, held(36, 2), 2 * bar, 512);
+          double d = 0; for (size_t i = 0; i < x1.size(); ++i) d = std::fmax(d, std::fmax(std::fabs(x1[i] - x2[i]), std::fabs(x1[i] - x3[i])));
+          printf("      block sizes 37 / 128 / 512: largest difference %.2g\n", d);
+          check(d < 3e-3, "Pattern: the line is the same whatever the MPC's block size (differences below -50 dB)"); }
+        gTransport = false;
+        { OCKM03 a; setup(a); auto x = render(a, {{1000, 36, 100, true}, {1000 + bar, 36, 0, false}}, bar + 2000);
+          check(rms(x, 1100, 1100 + step / 4) > 0.01f || !Pattern::plays(0, 16, 1, 0.75f), "Pattern, transport stopped: the line starts as the note is pressed"); }
+    }
+    // 3h. v1.6 Grit.
+    {
+        const float os = 88200.0f;
+        auto runSaw = [&](float fc, float res, float drive, bool fb, float amp, std::vector<float>& y)
+        { DiodeLadder f; f.reset(); y.resize(sr); double ph = 0;
+          for (int i = 0; i < sr; ++i) { if ((i & 15) == 0) f.set(fc, res, os, drive, fb); ph += 65.406 / sr; if (ph >= 1) ph -= 1; y[i] = f.process(amp * (float)(2 * ph - 1)); } };
+        auto runSine = [&](float fc, float res, float drive, bool fb, float amp, double f0, std::vector<float>& y)
+        { DiodeLadder f; f.reset(); y.resize(sr);
+          for (int i = 0; i < sr; ++i) { if ((i & 15) == 0) f.set(fc, res, os, drive, fb); y[i] = f.process(amp * (float)std::sin(2 * 3.14159265358979 * f0 * i / 44100.0)); } };
+        std::vector<float> y;
+        // DC gain 1 at Resonance 0 (Full Bass on moves the coupling to 16 Hz; measure at 60 Hz through a 5 kHz filter).
+        runSine(5000.f, 0.f, 1.f, true, 0.01f, 60.0, y);
+        const float g60 = rms(y, sr / 2, sr) / (0.01f / std::sqrt(2.f)) / DiodeLadder::kPostBase;
+        printf("      passband gain at Resonance 0 (60 Hz, Full Bass): %.2f\n", g60);
+        check(g60 > 0.85f && g60 < 1.1f, "filter: unity passband gain at Resonance 0 (the input pair feeds a current, v1.6 fix)");
+        bool decays = true;
+        for (bool fb : {false, true}) for (float fc : {100.f, 300.f, 1000.f, 3000.f, 8000.f})
+        { DiodeLadder f; f.reset(); std::vector<float> z(2 * sr);
+          for (int i = 0; i < 2 * sr; ++i) { if ((i & 15) == 0) f.set(fc, 1.0f, os, 66.6f, fb); z[i] = f.process(i == 0 ? 0.5f : 0.0f); }
+          if (!(peak(z, sr + sr / 2, 2 * sr) < 1e-6f)) decays = false; }
+        check(decays, "filter with saturation and Overdrive 100: an impulse at maximum Resonance dies away (with and without Full Bass)");
+        { DiodeLadder f; f.reset(); bool ok = true;
+          for (int i = 0; i < sr; ++i) { if ((i & 15) == 0) f.set(19000.f, 1.0f, os, 66.6f, true); float v = f.process(((i / 7) & 1) ? 100.f : -100.f); ok = ok && std::isfinite(v) && std::fabs(v) < 20.f; }
+          check(ok, "filter stays bounded with +-100 input, Overdrive 100 and maximum cutoff"); }
+        // Stage saturation: a loud sine has relatively more 3rd harmonic than a quiet one.
+        auto h3 = [&](float amp) { runSine(2000.f, 0.f, 1.f, false, amp, 200.0, y); return tone(y, sr / 2, sr, 600.0) / tone(y, sr / 2, sr, 200.0); };
+        const float hq = h3(0.05f), hl = h3(1.5f);
+        printf("      3rd harmonic / fundamental: quiet %.4f, loud %.4f\n", hq, hl);
+        check(hl > hq * 10.f, "filter saturates when driven (inner stages and input pair)");
+        auto evenOdd = [&](float drive) { runSaw(800.f, 0.5f, drive, false, 0.8f, y); double e = 0, o = 0;
+            for (int hh = 2; hh <= 8; hh += 2) e += tone(y, sr / 2, sr, 65.406 * hh); for (int hh = 3; hh <= 9; hh += 2) o += tone(y, sr / 2, sr, 65.406 * hh); return (float)(e / o); };
+        const float u0 = evenOdd(1.f), u1 = evenOdd(1 + 65.6f * 0.36f);
+        printf("      even / odd harmonics (2-9): Overdrive 0 %.3f, Overdrive 60 %.3f\n", u0, u1);
+        check(u1 < u0 * 0.75f && u1 < 1.0f, "Overdrive squares up the wave inside the filter (odd harmonics take over)");
+        auto bassRatio = [&](bool fb) { runSine(3000.f, 0.f, 1.f, fb, 0.01f, 40.0, y); float a = rms(y, sr / 2, sr);
+            runSine(3000.f, 0.f, 1.f, fb, 0.01f, 200.0, y); return a / rms(y, sr / 2, sr); };
+        const float bOff = bassRatio(false), bOn = bassRatio(true);
+        printf("      40 Hz / 200 Hz: Full Bass off %.2f, on %.2f\n", bOff, bOn);
+        check(bOn > bOff * 1.2f && bOn > 0.9f, "Full Bass keeps the deep bass (40 Hz close to 200 Hz)");
+        // Muffler lowers the crest factor of a played line.
+        auto crestM = [&](float m) { OCKM03 p; p.setProgram(3); p.set(kMuffler, m); auto x = render(p, pattern, 16 * step);
+            return peak(x, 0, (int)x.size()) / rms(x, 0, (int)x.size()); };
+        const float c0 = crestM(0), c100 = crestM(100);
+        printf("      crest factor: Muffler 0 %.2f, Muffler 100 %.2f\n", c0, c100);
+        check(c100 < c0 * 0.8f, "Muffler rounds off the peaks (lower crest factor)");
+        // Soft attack: a normal note takes longer to reach half level than an accented one.
+        auto rise = [&](int vel) { OCKM03 p; p.set(kCutoff, 70); p.set(kEnvMod, 0); p.set(kReso, 0); p.set(kAccent, 0);
+            auto x = render(p, {{0, 36, vel, true}, {step, 36, 0, false}}, step); return peak(x, 0, 60) / peak(x, 0, 1500); };
+        const float r80 = rise(80), r127 = rise(127);
+        printf("      level in the first 1.4 ms (share of the note's peak): normal %.2f, accented %.2f\n", r80, r127);
+        check(r80 < r127 * 0.8f, "soft attack: normal notes start more gently than accented ones");
+        { float worst = 0;
+          for (int prog = 0; prog < 8; ++prog) { OCKM03 p; p.setProgram(prog); p.set(kOverdrive, 100); p.set(kMuffler, 100); p.set(kFullBass, 1);
+              auto x = render(p, pattern, 32 * step); worst = std::fmax(worst, peak(x, 0, (int)x.size())); }
+          printf("      worst preset peak with Overdrive, Muffler and Full Bass at maximum: %.2f dBFS\n", 20 * std::log10(worst));
+          check(worst < 1.0f, "every preset with Overdrive, Muffler and Full Bass at maximum peaks below 0 dBFS"); }
+    }
     // 4. Demo: each preset playing the pattern, Cutoff swept up and back in bars 3-4.
     {
         std::vector<float> all;
@@ -380,6 +514,20 @@ int main(int argc, char** argv)
                 gTransport = true; fillTransport(c, pos); gTransport = false;
                 c.midi = mev.data(); c.numMidiEvents = (int)mev.size(); p.process(c);
             }
+            printf("      preset %-16s peak %.2f dBFS\n", p.programName(prog), 20 * std::log10(peak(L, 0, (int)L.size()) + 1e-9));
+            all.insert(all.end(), L.begin(), L.end());
+        }
+        { OCKM03 p; p.setProgram(7); auto L = render(p, pattern, 32 * step);
+          printf("      preset %-16s peak %.2f dBFS\n", p.programName(7), 20 * std::log10(peak(L, 0, (int)L.size()) + 1e-9));
+          all.insert(all.end(), L.begin(), L.end()); }
+        for (int prog = 5; prog < 7; ++prog)
+        {
+            gTransport = true;
+            std::vector<Ev> bars; const int keys[4] = {36, 36, 39, 34};
+            for (int b = 0; b < 4; ++b) { bars.push_back({b * 16 * step, keys[b], 100, true}); bars.push_back({(b + 1) * 16 * step, keys[b], 0, false}); }
+            std::sort(bars.begin(), bars.end(), [](const Ev& a, const Ev& b) { return a.frame < b.frame || (a.frame == b.frame && !a.on && b.on); });
+            OCKM03 p; p.setProgram(prog); auto L = render(p, bars, 64 * step + 4410);
+            gTransport = false;
             printf("      preset %-16s peak %.2f dBFS\n", p.programName(prog), 20 * std::log10(peak(L, 0, (int)L.size()) + 1e-9));
             all.insert(all.end(), L.begin(), L.end());
         }

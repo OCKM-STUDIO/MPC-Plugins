@@ -26,5 +26,40 @@
         { "param": "Volume",     "widget": "fader" },
         { "param": "Variation",  "widget": "knob" }
       ] }
+    ,
+    { "name": "PATTERN",
+      "controls": [
+        { "param": "Pattern",    "widget": "switch" },
+        { "param": "Density",    "widget": "knob" },
+        { "widget": "empty" },
+        { "widget": "empty" },
+
+        { "param": "Pattern #",  "widget": "knob" },
+        { "param": "Pat Accent", "widget": "knob" },
+        { "widget": "empty" },
+        { "widget": "empty" },
+
+        { "param": "Length",     "widget": "knob" },
+        { "param": "Pat Slide",  "widget": "knob" },
+        { "widget": "empty" },
+        { "widget": "empty" },
+
+        { "param": "Scale",      "widget": "knob", "overlay": "menu" },
+        { "param": "Range",      "widget": "knob" },
+        { "widget": "empty" },
+        { "widget": "empty" }
+      ] }
+    ,
+    { "name": "GRIT",
+      "controls": [
+        { "param": "Overdrive",  "widget": "knob" },
+        { "widget": "empty" }, { "widget": "empty" }, { "widget": "empty" },
+        { "param": "Muffler",    "widget": "knob" },
+        { "widget": "empty" }, { "widget": "empty" }, { "widget": "empty" },
+        { "param": "Full Bass",  "widget": "switch" },
+        { "widget": "empty" }, { "widget": "empty" }, { "widget": "empty" },
+        { "widget": "empty" },
+        { "widget": "empty" }, { "widget": "empty" }, { "widget": "empty" }
+      ] }
   ]
 }

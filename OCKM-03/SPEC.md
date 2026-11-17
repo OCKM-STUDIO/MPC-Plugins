@@ -382,3 +382,164 @@ Simon asked for four changes taken from a public circuit study of the classic ac
   - desktop: 0.36 % of real time playing 16ths, against 0.37 % for v1.3
   - host_sim: 19/19, average 0.24 %
   - MPC One: still to measure
+
+## 14. v1.5: Pattern generator (approved and built 2026-11-17)
+
+Simon asked for the "generate" idea from the GPL-3 `mpc-vst-acid` plugin, keeping OCKM-03's own Mutate. That plugin makes no sound: it sends MIDI to other tracks through an unofficial route. Here the generator plays **OCKM-03's own voice**, so no MIDI output is needed. Only the behaviour described in its README is used; no code is read or copied, and the generator below is our own design. OCKM-03 stays MIT.
+
+### 14.1 How you use it
+
+1. Turn **Pattern** to **Hold**.
+2. Hold a note (a pad, or one long note on the MPC grid). OCKM-03 plays a 16th-note acid line in that key for as long as the note is held. Releasing the note stops the line.
+3. A different held note transposes the line, so drawing one long note per bar on the grid writes the key changes.
+4. **Pattern #** chooses the line: each number (1–999) is a different line. Turning it is "Generate". The number is saved with the project, so a line always comes back.
+5. **Density**, **Accent**, **Slide**, **Range** and **Length** reshape the current line live. Returning a knob to a value gives back exactly the same line.
+6. **Mutate** works on generated notes exactly as on played ones (octave jumps, slide-ins and rests on the same steps of the bar).
+
+With Pattern **Off** (the default), OCKM-03 behaves exactly as v1.4. Old projects are unaffected.
+
+**Timing:**
+- While the MPC sequence plays, steps sit on the song's 16th grid, using the same step clock as Mutate. Step `s` of the line plays on song step `s mod Length`, counted from the bar, so it stays locked when you loop or move the playhead.
+- When the transport is stopped, the line runs from the moment the note is held, at the MPC's tempo (120 BPM if none).
+
+**Why Hold, not free-running:** the line can be started, stopped and transposed from the MPC's own grid, which is the closest we can get to putting it "on the grid". (Plugins can't write notes to the grid.)
+
+### 14.2 The generator (our own design)
+
+- **Repeatable numbers:** for each step 0–31 and each lane (play, accent, slide, pitch, octave), a fixed number comes from an integer hash of (Pattern #, step, lane). We already use this approach in Mutate. The knobs only move thresholds against these numbers, so the line reshapes smoothly and returns exactly.
+- **Exact amounts:** as in Mutate, steps are ranked by their number within the first `Length` steps.
+  - Density 50 % with Length 16 plays exactly 8 steps.
+  - Accent and Slide are shares of all `Length` steps, ranked independently of Density, so changing Density never moves the accents or slides. A slide into a rest becomes a plain note. (The draft said "share of played steps"; this was changed while building it, for that stability.)
+  - Turning a knob up only adds steps.
+- **Pitch:** the scale is natural minor from the held note. Each played step picks a scale degree from its pitch number, weighted towards the root (about 40 % root, then the 5th, the minor 3rd and the 7th, then the rest), which gives acid-style lines.
+  - Range 1, 2 or 3 octaves: the octave number lifts a step up 1 or 2 octaves within that range.
+  - Steps with an octave number near the top go up first, so Range 1 → 2 only adds jumps.
+- **Gate:** a plain note lasts half a step. A slide note holds into the next step, giving OCKM-03's normal slide with no re-pluck.
+- **Accent:** an accented step plays at velocity 127, others at 80, so Accent Thr still decides. At the default of 100, accents are accents.
+- **CPU:** a few hashes per step. Nothing is added per sample.
+
+### 14.3 Parameters (appended after 30)
+
+| # | id | Name | Range | Default |
+|---|---|---|---|---|
+| 31 | `pt_mode` | Pattern | Off / Hold | Off |
+| 32 | `pt_seed` | Pattern # | 1–999 | 1 |
+| 33 | `pt_den` | Density | 0–100 % | 75 |
+| 34 | `pt_acc` | Pat Accent | 0–100 % | 30 |
+| 35 | `pt_sld` | Pat Slide | 0–100 % | 20 |
+| 36 | `pt_rng` | Range | 1–3 oct | 1 |
+| 37 | `pt_len` | Length | 1–32 steps | 16 |
+| 38 | `pt_scl` | Scale | Minor / Phrygian / Dorian / Min Pent / Harm Min | Minor |
+
+All are automatable, so knob moves can be recorded into the sequence.
+
+### 14.4 UI
+
+There will be a second page, **PATTERN**, with two blocks of four (columns), each with its own screen-mode Q-Links:
+- **Line:** Pattern (switch), Pattern #, Length, Scale
+- **Shape:** Density, Accent, Slide, Range
+
+The ACID page is unchanged. Program-mode Q-Links are already all used (1–16), so the Pattern controls work through the screen's Q-Links on the PATTERN page.
+
+### 14.5 Presets
+
+Two more, appended:
+- **Acid Machine:** the Classic Squelch sound with Pattern on (Pattern # 7, Density 75, Accent 30, Slide 20).
+- **Mutant Machine:** the same with Mutate and a little Echo.
+
+### 14.6 Tests
+
+- **Repeatable:** the same Pattern # gives the same notes, and a different number gives different notes.
+- **Exact amounts:** Density 50 % plays exactly 8 of 16 steps. Turning Density, Accent or Slide up only adds steps, and turning one back restores the line exactly.
+- **Hold:** with Pattern Off the output is identical to v1.4. With Hold, nothing plays without a held note, and releasing it stops the line with no hanging note.
+- **Transpose:** holding C2 instead of C1 raises every note by 12.
+- **Transport lock:** step 5 of the line lands on the 6th 16th of the bar, the same in every bar, and Length 12 repeats every 12 steps.
+- **Slides:** slide steps do not re-pluck the filter.
+- **Mutate:** Add Rest still silences the predicted steps of a generated line.
+- **Existing checks:** all still pass, and host_sim has no FAIL.
+
+### 14.7 Not in v1.5
+
+- Swing (the MPC's swing can't reach notes the plugin makes itself)
+- Two lines and blend modes, step editing and locks, LFOs, auto-regenerate
+- Sending the line to other tracks or hardware as MIDI
+- Writing it onto the grid
+
+### 14.8 As built
+
+- **Names:** parameters 34 and 35 are named "Pat Accent" and "Pat Slide", because the screen finds controls by name and "Accent" is already taken.
+- **Scale:** a knob with a menu overlay (5 choices). Pattern is a switch captioned OFF / HOLD.
+- **Q-Links:** on the PATTERN page, the screen-mode Q-Links follow the two columns. Program-mode Q-Links are unchanged.
+- **Timing:** `renderPattern()` steps through the block in order: MIDI first (so a key pressed on a step plays it), then the end of a note's gate, then the next 16th.
+  - **On the grid:** song step `k` lands at sample `ceil((k/4 − ppqPos) / (bpm/60/sr))`.
+  - **No double plays:** the last song step played is remembered, so a step never plays twice across block edges. That memory is cleared when the playhead jumps back (a loop).
+  - **Grace:** a first key pressed up to a quarter step after a 16th plays that 16th at once.
+  - **Transport stopped:** the line starts at the key press and steps every `sr·60/bpm/4` samples.
+- **Switching:** turning Pattern on or off releases everything.
+- **Harness results** (all passing):
+  - **Generator:** exact amounts (40 Pattern #s), nesting, and Minor Pent using only its notes.
+  - **Repeatable:** the same Pattern # gives the same line.
+  - **Off and Hold:** Pattern Off is unaffected by the Pattern knobs; Hold is silent with no key, and a release stops cleanly, even with Slide, Mutate and Range 3.
+  - **Grid:** onsets match the prediction over 4 bars (Density 50 % gives 32 notes), and Length 12 repeats every 12.
+  - **Transpose:** holding C2 doubles the zero crossings of C1 (168 → 336).
+  - **Slides and Mutate:** slide steps don't re-pluck (brightness 0.0278 → 0.0128), and Add Rest silences the predicted steps.
+  - **Block size:** block sizes 37, 128 and 512 differ by less than −50 dB (largest 0.001, from per-block knob smoothing, not timing).
+  - **Transport stopped:** the line starts on the key press.
+- **Peaks:** demo peaks are Acid Machine −2.63 and Mutant Machine −2.76 dBFS. All 7 presets stay below 0 dBFS with Mutate and with Echo at maximum.
+- **host_sim:** 19/19, 39 parameters round-trip, average 0.22 %.
+
+## 15. v1.6: Grit (approved and built 2026-11-17)
+
+Simon found v1.4 "a little too smooth". A second circuit-model project, the AGPL-3 `mpc-vst-acid303`, confirmed the v1.4 changes. It also showed what v1.4 had simplified: every transistor pair in the filter saturates, not only the input pair. Only the published behaviour is used (that project's README, and the public manual of the classic after-market mods); no code is read or copied.
+
+1. **Filter correction (a v1.4 bug).** In the circuit, the input pair feeds a **current** into the bottom stage, which does not depend on the bottom stage's voltage. v1.4 modelled it as a conductance from the input voltage instead (`v0' = g·c0·(u − 2v0 + v1)`). That added damping to the bottom stage and needed a ×5 output gain.
+   - **Fix:** `v0' = g·c0·(u − (v0 − v1))`, with unity output gain.
+   - **Check:** with this fix the analysis gives a self-oscillation loop gain of about 17. That matches the circuit study's own figure of "≈ 17", which v1.4 did not.
+   - **New constants:** resonant peak / stage conductance 1.39 (at mid and high cutoffs), Resonance 100 = 0.9 × 17.2.
+2. **Inner-stage saturation.** Each rung current is `g·tanh(Δv)`, and the top termination is `g·tanh(v3)`, in units where the input pair is `g·tanh(x)` (the circuit's own scaling: everything is relative to 2·VT).
+   - **Method:** the linear zero-delay solve predicts the states. Then one correction step replaces the linear rung currents with the tanh ones.
+   - **Stability:** at the very top of the cutoff range the correction is scaled down so the step stays stable.
+   - **Cost:** 4 more rational tanh per oversampled sample.
+3. **Overdrive** (new parameter 39, `odrive`, 0–100 %, default 0). The oscillator level into the filter's input pair is ×1 at 0 and ×66.6 at 100, following the square of the knob. This is the classic mod's range. High settings square up the wave inside the filter and push the inner stages into saturation.
+4. **Muffler** (new parameter 40, `muffle`, 0–100 %, default 0). Soft clipping of the amp's output, before Drive. It rounds off the loud start of notes and the accent peaks, for a fuzzier, rounder buzz:
+   - the threshold falls from 0.5 to 0.1 as the knob rises
+   - the clipped signal is fully mixed in by 25 %
+   - make-up gain is ×1 to ×2.2
+5. **Full Bass** (new parameter 41, `fullbs`, Off / On, default Off). This moves the filter's in-loop output coupling from 78 Hz to 16 Hz, so 32 Hz is down about 1 dB instead of 5 (the classic mod's "fuller bass"). Off keeps the authentic thin low end.
+6. **Soft attack.** Normal notes now start over 3 ms, as on the original. Accented notes start over 0.5 ms, so accents punch through. Before, every note started over 1 ms.
+
+**UI:** a third page, **GRIT**, with one block of four: Overdrive, Muffler, Full Bass (switch OFF / ON), and an empty slot. The ACID and PATTERN pages are unchanged.
+
+**Presets:** existing presets keep the new knobs at 0 / Off, but they sound grittier because of the stage saturation, and they are re-levelled to v1.5 loudness. One more preset is appended: **Grit Squelch** (Overdrive, a little Muffler, Full Bass on).
+
+**Tests:**
+- The filter's DC gain is 1 at Resonance 0, with the coupling stages excluded.
+- At Resonance 100 an impulse still dies away, now including saturation, at 100 Hz – 8 kHz, with and without Full Bass.
+- The filter stays bounded with ±100 input and Overdrive 100 at maximum cutoff.
+- Stage saturation adds harmonics: a loud sine through the filter has more 3rd harmonic than a quiet one, relative to its fundamental.
+- Overdrive raises harmonic content.
+- Muffler lowers the crest factor.
+- Full Bass raises 40 Hz against 200 Hz.
+- Normal notes start more slowly than accented ones.
+- Every preset peaks below 0 dBFS with Overdrive and Muffler at maximum.
+- All existing checks still pass, and host_sim has no FAIL.
+
+### 15.1 As built
+
+- **Levels:**
+  - Make-up gain after the filter is 2.0 × (1 + 1.2 × Resonance), which puts the presets within 0.3 dB of v1.5's loudness.
+  - Overdrive raises the filter's output by about 9 dB (Resonance 0) to 20 dB (Resonance 100), because a clipped input swamps the resonance's level loss. Most of it is taken back with `10^(−(8.7 + 11.5·√res)·(1 − 1/drive)/20)`, so Overdrive changes the tone, not the volume, within about 4 dB.
+- **Grit Squelch:** Cutoff 46, Resonance 78, Env Mod 65, Decay 45, Accent 70, Overdrive 45, Muffler 20, Full Bass on, Volume −4 dB.
+- **Measured:**
+  - passband gain at Resonance 0: 0.96
+  - 3rd harmonic / fundamental: 0.0002 quiet, 0.091 loud
+  - even / odd harmonics: 1.26 at Overdrive 0, 0.86 at Overdrive 60
+  - 40 Hz / 200 Hz: 0.57 with Full Bass off, 1.09 on
+  - crest factor: 5.43 at Muffler 0, 2.84 at Muffler 100
+  - level in the first 1.4 ms: 0.16 for a normal note, 0.38 for an accented one
+  - worst preset peak with Overdrive, Muffler and Full Bass at maximum: −9.1 dBFS
+  - demo peaks: −1.2 to −4.4 dBFS
+- **CPU:**
+  - desktop, playing 16ths: 0.42 % of real time against 0.30–0.33 % for v1.5 (about +30 %, from the 4 extra tanh per oversampled sample)
+  - host_sim: 19/19, 42 parameters round-trip, average 0.25 %
+  - MPC One: still to measure
