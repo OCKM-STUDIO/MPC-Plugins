@@ -128,8 +128,30 @@ static void writeWav(const char* path, const std::vector<float>& L, const std::v
 }
 
 static const char* kPresetNames[] = {"Init Drift", "Slow Burn", "Rolling Techno", "Peak Arp", "Sparse Dub",
-                                     "Singing Lead", "Deep Walker", "Chaos Garden", "Frozen Hook"};
-static const int kNumPresets = 9;
+                                     "Singing Lead", "Deep Walker", "Chaos Garden", "Frozen Hook",
+                                     "Chord Rider", "Offbeat Stabs", "Rolling Bass"};
+static const int kNumPresets = 12;
+static const int kNumV10Presets = 9;
+
+// Which bar of play a frame is in (a note on the bar line belongs to the new bar).
+static int barOf(const Mpc& m, long long frame) { return (int)std::floor((frame + 1) / (4.0 * m.framesPerBeat())); }
+
+// The folder this file is in (the harness is run from the repo root).
+static std::string testsDir() { std::string f = __FILE__; const size_t k = f.rfind('/'); return k == std::string::npos ? "." : f.substr(0, k); }
+
+// Pitch classes of the triad on scale degree `chordDeg` (any integer) of scale/root.
+static std::set<int> chordPcs(int scale, int root, int chordDeg)
+{
+    const int len = kScaleLen[scale];
+    std::set<int> pcs;
+    for (int t = 0; t < 3; ++t)
+    {
+        const int d = ((chordDeg + kChordTones[scale][t]) % len + len) % len;
+        pcs.insert((root + kScaleNotes[scale][d]) % 12);
+    }
+    return pcs;
+}
+
 
 // Chord roots A F C G (one per bar), as written in an MPC sequence: octave 2.
 static void progression(Mpc& m, long long start, int nbars, int lateFrames = 0)
@@ -286,7 +308,7 @@ int main(int argc, char** argv)
                             int r = root;
                             if (keys == kKeysTranspose)
                             {
-                                const int b = (int)(l.frame / m.bars(1));
+                                const int b = barOf(m, l.frame);
                                 const int rel = ((chordNotes[b] % 12) - root + 12) % 12;
                                 r = root + (rel >= 6 ? rel - 12 : rel);
                             }
@@ -457,6 +479,185 @@ int main(int argc, char** argv)
         bool same = ma.log.size() == mb.log.size();
         for (size_t i = 0; same && i < ma.log.size(); ++i) same = ma.log[i].note == mb.log[i].note && ma.log[i].frame == mb.log[i].frame;
         check(same, "Volume (param 0) wiggled: the line is unchanged");
+    }
+
+    // ---------------- v1.1: v1.0 compatibility ----------------
+    {
+        FILE* f = fopen((testsDir() + "/v1_0_notes.txt").c_str(), "r");
+        FILE* h = fopen((testsDir() + "/v1_0_state.hex").c_str(), "r");
+        bool ok = f && h; int compared = 0;
+        std::vector<std::array<long long, 7>> want; std::vector<std::array<long long, 5>> wantState;
+        char tag[16];
+        while (f && fscanf(f, "%15s", tag) == 1)
+        {
+            long long a, fr, st, nt, ac, lg;
+            if (fscanf(f, "%lld %lld %lld %lld %lld %lld", &a, &fr, &st, &nt, &ac, &lg) != 6) break;
+            if (std::string(tag) == "state") wantState.push_back({fr, st, nt, ac, lg});
+            else want.push_back({std::atoll(tag), a, fr, st, nt, ac, lg});
+        }
+        std::vector<std::array<long long, 7>> got;
+        for (int pr = 0; pr < kNumV10Presets && ok; ++pr)
+            for (int chords = 0; chords < 2; ++chords)
+            {
+                OCKMDRIFT a; a.setProgram(pr);
+                Mpc m(a); if (chords) progression(m, m.bars(8), 24);
+                m.runBars(32);
+                for (const auto& l : m.log) got.push_back({pr, chords, l.frame, l.step, l.note, (long long)l.accent, (long long)l.legato});
+            }
+        ok = ok && got == want && !want.empty();
+        compared = (int)want.size();
+        std::vector<uint8_t> st; unsigned v;
+        while (h && fscanf(h, "%2x", &v) == 1) st.push_back((uint8_t)v);
+        OCKMDRIFT b; bool loaded = b.internalLoadState(st.data(), st.size());
+        Mpc mb(b); mb.runBars(4);
+        std::vector<std::array<long long, 5>> gotState;
+        for (const auto& l : mb.log) gotState.push_back({l.frame, l.step, l.note, (long long)l.accent, (long long)l.legato});
+        if (f) fclose(f);
+        if (h) fclose(h);
+        snprintf(buf, sizeof buf, "%d notes from the 9 v1.0 presets, with and without chord notes", compared);
+        check(ok, "v1.1 at default settings plays v1.0's line note for note", buf);
+        check(loaded && gotState == wantState && !wantState.empty(), "a project saved with v1.0 loads and plays the same locked line");
+    }
+
+    // ---------------- v1.1: Chord Stick ----------------
+    {
+        bool free0 = true, offSame = true, all100 = true, inRange = true;
+        for (int seed = 1; seed <= 40; ++seed)
+        {
+            OCKMDRIFT z, d; z.set(kSeed, seed); d.set(kSeed, seed);
+            z.set(kChordStick, 0); z.set(kKeys, 0); d.set(kKeys, 0); z.set(kHits, 16); d.set(kHits, 16);
+            Mpc mz(z), md(d); mz.runBars(1); md.runBars(1);
+            for (int i = 1; i < kSteps; ++i)
+            {
+                const int fd = foldDeg(z.pattern().s[i].deg, 7);
+                const int expect = 69 + 12 * (fd / 7) + kScaleNotes[0][fd % 7];
+                if (z.stepNote(i) != expect) free0 = false;
+                if ((i & 3) != 0 && z.stepNote(i) != d.stepNote(i)) offSame = false;
+            }
+        }
+        check(free0, "Chord Stick 0%: no note is moved, the line is the plain walk");
+        check(offSame, "Chord Stick 0% and 50%: steps off the beat are the same (only beats snap at 50%)");
+        // 100%: every note a chord tone, with MPC chord notes and with built-in Chords, in key and in Range.
+        for (int sc : {0, 1, 3, 6})
+            for (int src = 0; src < 2; ++src)
+                for (int range = 1; range <= 3; ++range)
+                {
+                    OCKMDRIFT a; a.set(kScale, sc); a.set(kRoot, 9); a.set(kChordStick, 100); a.set(kHits, 16); a.set(kRange, range);
+                    a.set(kMutate, 100); a.set(kEvolve, 0); a.set(kSeed, 5 + sc + range);
+                    Mpc m(a, 512);
+                    static const int degs[4] = {0, 5, 2, 6};           // 1-6-3-7
+                    if (src == 0) a.set(kChords, 1);
+                    else for (int b = 0; b < 8; ++b) m.chord(m.bars(b), 9 + 12 * 3 + kScaleNotes[kParentScale[sc]][degs[b % 4]], m.bars(1) - 100);
+                    m.runBars(8);
+                    for (const auto& l : m.log)
+                    {
+                        const int bar = barOf(m, l.frame);
+                        int deg = 0, semi = 0;
+                        // the chord's degree in this scale (nearest), as the plugin computes it
+                        const int rel = kScaleNotes[kParentScale[sc]][degs[bar % 4]];
+                        int idx = 0; for (int k = 0; k < kScaleLen[sc]; ++k) if (kScaleNotes[sc][k] <= rel) idx = k;
+                        deg = idx; (void)semi;
+                        if (!chordPcs(sc, 9, deg).count(l.note % 12)) all100 = false;
+                        if (!inScale(l.note, 9, sc)) all100 = false;
+                    }
+                    (void)inRange;
+                }
+        check(all100, "Chord Stick 100%: every note is a chord tone of the current chord (MPC notes and built-in Chords)");
+    }
+
+    // ---------------- v1.1: Chords ----------------
+    {
+        bool roots = true, inKey = true, transpose = true; int renders = 0;
+        for (int prog = 1; prog < kNumProgressions; ++prog)
+            for (int cb = 0; cb < 3; ++cb)
+                for (int sc = 0; sc < kNumScales; ++sc)
+                    for (int root : {0, 4, 9})
+                    {
+                        OCKMDRIFT a; a.set(kChords, prog); a.set(kChordBars, cb); a.set(kScale, sc); a.set(kRoot, root);
+                        a.set(kMutate, 50); a.set(kSeed, prog * 13 + sc + root);
+                        Mpc m(a, 512); m.runBars(16); ++renders;
+                        const int bars = kChordBarsTable[cb];
+                        const Progression& p = kProgressions[prog];
+                        for (const auto& l : m.log)
+                        {
+                            const int bar = barOf(m, l.frame);
+                            const int rel = kScaleNotes[kParentScale[sc]][p.deg[(bar / bars) % p.len]];
+                            int idx = 0; for (int k = 0; k < kScaleLen[sc]; ++k) if (kScaleNotes[sc][k] <= rel) idx = k;
+                            if (l.step == 0 && (l.note - root - kScaleNotes[sc][idx] + 120) % 12 != 0) roots = false;
+                            if (!inScale(l.note, root, sc)) inKey = false;
+                        }
+                        if (sc == 0 && root == 9)
+                        {
+                            OCKMDRIFT t; t.set(kChords, prog); t.set(kChordBars, cb); t.set(kKeys, 2); t.set(kMutate, 50);
+                            Mpc mt(t, 512); mt.runBars(16);
+                            for (const auto& l : mt.log)
+                            {
+                                const int bar = barOf(mt, l.frame);
+                                const int rel = kScaleNotes[0][p.deg[(bar / bars) % p.len]];
+                                const int semi = rel >= 6 ? rel - 12 : rel;
+                                if (!inScale(l.note, 9 + semi, 0)) transpose = false;
+                                if (l.step == 0 && (l.note - 9 - semi + 120) % 12 != 0) transpose = false;
+                            }
+                        }
+                    }
+        snprintf(buf, sizeof buf, "%d renders: 7 progressions x 1/2/4 bars x 8 scales x 3 roots", renders);
+        check(roots, "Chords: step 1 of every bar is the right chord root, changing only on bar lines", buf);
+        check(inKey, "Chords: every note stays in key");
+        check(transpose, "Chords with Keys on Transpose: the line moves by the chord's semitones");
+
+        // In A minor, 1-6-3-7 at 1 bar: A F C G on step 1.
+        OCKMDRIFT a; a.set(kChords, 1); Mpc m(a); m.runBars(4);
+        const auto bars = perBar(m, 4);
+        std::string got; static const char* names[12] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
+        for (const auto& b : bars) { if (!b.empty()) got += names[b[0][1] % 12]; got += " "; }
+        check(got == "A F C G ", "1-6-3-7 in A minor plays A F C G", got.c_str());
+
+        // An MPC note takes over until the next Play; the progression restarts on Play.
+        OCKMDRIFT o; o.set(kChords, 1); o.set(kMutate, 0); Mpc mo(o);
+        mo.chord(mo.bars(1), 43, 2000);                         // a short G at bar 2
+        mo.runBars(4);
+        const auto ob = perBar(mo, 4);
+        bool took = ob[0][0][1] % 12 == 9 && ob[1][0][1] % 12 == 7 && ob[2][0][1] % 12 == 7 && ob[3][0][1] % 12 == 7;
+        mo.playing = false; mo.runBars(1); mo.playing = true; mo.ppq = 0.0;
+        const long long again = mo.frame; mo.runBars(2);
+        Mpc tmp(o); tmp.log = mo.log;
+        const auto ab = perBar(tmp, 2, again);
+        bool restarted = !ab[0].empty() && !ab[1].empty() && ab[0][0][1] % 12 == 9 && ab[1][0][1] % 12 == 5;
+        check(took, "an MPC note takes over from Chords and keeps control (A, then G, G, G)");
+        check(restarted, "pressing Play again restarts the progression from its first chord (A, F)");
+
+        // Keys Off: MPC notes are ignored, the progression keeps going.
+        OCKMDRIFT k; k.set(kChords, 1); k.set(kKeys, 0); Mpc mk(k); mk.chord(mk.bars(1), 43, 2000); mk.runBars(3);
+        const auto kb = perBar(mk, 3);
+        check(kb[1][0][1] % 12 == 5 && kb[2][0][1] % 12 == 0, "Keys Off: MPC notes are ignored and Chords keeps going (F, C)");
+    }
+
+    // ---------------- v1.1: Rhythm ----------------
+    {
+        static const char* pats[kNumRhythms] = {"", "..x...x...x...x.", ".xxx.xxx.xxx.xxx", "x.xxx.xxx.xxx.xx",
+                                                "x..x..x...x..x..", "x.....x.x.....x.", "..x....x..x.....", "x.xx.x.x........"};
+        bool exact = true, all = true, none = true, hitsIgnored = true;
+        for (int r = 1; r < kNumRhythms; ++r)
+            for (int rot = 0; rot < 16; ++rot)
+            {
+                OCKMDRIFT a; a.set(kRhythm, r); a.set(kRotate, rot);
+                for (int i = 0; i < kSteps; ++i)
+                {
+                    const bool want = pats[r][((i - rot) % 16 + 16) % 16] == 'x';
+                    if ((a.stepNote(i) >= 0) != want) exact = false;
+                }
+                OCKMDRIFT b; b.set(kRhythm, r); b.set(kRotate, rot); b.set(kHits, rot + 1);
+                for (int i = 0; i < kSteps; ++i) if ((a.stepNote(i) >= 0) != (b.stepNote(i) >= 0)) hitsIgnored = false;
+                a.set(kDensity, 100); for (int i = 0; i < kSteps; ++i) if (a.stepNote(i) < 0) all = false;
+                a.set(kDensity, 0);   for (int i = 0; i < kSteps; ++i) if (a.stepNote(i) >= 0) none = false;
+            }
+        check(exact, "Rhythm: at Density 50% each groove plays exactly its pattern, shifted by Rotate (7 x 16)");
+        check(all && none, "Rhythm: Density 100% plays every step, 0% none");
+        check(hitsIgnored, "Rhythm: Hits only acts on Even");
+        OCKMDRIFT e; e.set(kRhythm, 2); e.set(kMutate, 50); e.set(kEvolve, 0);
+        Mpc me(e); me.runBars(8);
+        const auto eb = perBar(me, 8);
+        check(eb[1] != eb[6] && e.cycle() >= 6, "Rhythm: the line keeps evolving on a picked groove");
     }
 
     // ---------------- No clipping across presets ----------------

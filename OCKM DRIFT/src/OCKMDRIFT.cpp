@@ -79,6 +79,11 @@ enum ParamIndex
     kSlide,        // chance a note slides into the next
     kCutDrift,     // slow cutoff wander depth
     kSwing,        // 50..75 %
+    // v1.1 (appended: ids and order permanent)
+    kChordStick,   // 0..100 %: how often notes move to the chord's 1st/3rd/5th (50 = v1.0)
+    kChords,       // built-in progression (0 = Off: follow MPC notes)
+    kChordBars,    // 1 / 2 / 4 bars per chord
+    kRhythm,       // base rhythm (0 = Even: from Hits)
     kNumParams
 };
 
@@ -134,6 +139,10 @@ public:
         addParam(floatParam("slide",   "Slide",        0.0f, 100.0f, 20.0f, "%", 0));
         addParam(floatParam("cutdrift", "Cut Drift",   0.0f, 100.0f, 0.0f, "%", 0));
         addParam(floatParam("swing",   "Swing",       50.0f, 75.0f, 50.0f, "%", 0));
+        addParam(floatParam("chordstick", "Chord Stick", 0.0f, 100.0f, 50.0f, "%", 0));
+        addParam(choiceParam("chords", "Chords", {"Off", "1-6-3-7", "1-4", "1-7-6-7", "1-5", "1-6-4-5", "1-3-4-6", "2-5-1-1"}, 0));
+        addParam(choiceParam("chordbars", "Chord Bars", {"1 Bar", "2 Bars", "4 Bars"}, 0));
+        addParam(choiceParam("rhythm", "Rhythm", {"Even", "Offbeat", "Rolling", "Gallop", "Syncopated", "Two-Step", "Stab", "Call"}, 0));
         if (numParams() != kNumParams) mpc::log("OCKM DRIFT: parameter count mismatch (%d vs %d)", numParams(), (int)kNumParams);
 
         auto program = [this](const char* name, std::initializer_list<std::pair<int, float>> overrides)
@@ -165,6 +174,13 @@ public:
                                    {kMutate, 70}, {kEvolve, 0}, {kCutDrift, 50}, {kSeed, 333}});
         program("Frozen Hook",    {{kScale, 0}, {kRoot, 0}, {kHits, 7}, {kRotate, 3}, {kLock, 1},
                                    {kSlide, 30}, {kMutate, 0}, {kSeed, 42}});
+        // v1.1
+        program("Chord Rider",    {{kScale, 0}, {kRoot, 9}, {kChords, 1}, {kChordBars, 1}, {kChordStick, 80},
+                                   {kHits, 7}, {kMutate, 20}, {kSeed, 88}});
+        program("Offbeat Stabs",  {{kScale, 1}, {kRoot, 2}, {kRhythm, 1}, {kChords, 2}, {kChordBars, 1},
+                                   {kLength, 25}, {kDecay, 20}, {kChordStick, 100}, {kSlide, 0}, {kSeed, 9}});
+        program("Rolling Bass",   {{kScale, 2}, {kRoot, 5}, {kRhythm, 2}, {kOctave, -2}, {kChords, 4},
+                                   {kChordBars, 2}, {kSub, 60}, {kCutoff, 30}, {kMutate, 20}, {kSeed, 31}});
 
         pattern_ = firstPattern(1);
         patternSeed_ = 1;
@@ -379,6 +395,10 @@ private:
         slide_ = get(kSlide) * 0.01f;
         cutDrift_ = get(kCutDrift) * 0.01f;
         swing_ = get(kSwing) * 0.01f;
+        chordStick_ = getNormalised(kChordStick);          // exactly 0.5 at the default
+        chords_ = clamp(getInt(kChords), 0, kNumProgressions - 1);
+        chordBars_ = kChordBarsTable[clamp(getInt(kChordBars), 0, 2)];
+        rhythm_ = clamp(getInt(kRhythm), 0, kNumRhythms - 1);
     }
 
     double beatsPerSample() const { return bps_; }
@@ -408,6 +428,8 @@ private:
         cycle_ = 0; barsSinceChange_ = 0; barsPlayed_ = 0;
         lastBar_ = bar;
         sinceBar_ = 0;
+        noteOverride_ = heldCount_ > 0 && keys_ != kKeysOff;        // a note held at Play keeps control
+        updateChord();
         tie_ = false; gateLeft_ = -1;
         // Starting inside a step: play it only if we're within the "late" window of its start.
         const double pos = (double)(((bar % loopBars_) + loopBars_) % loopBars_) * barBeats + inBar;
@@ -447,6 +469,7 @@ private:
             ++barsPlayed_;
         }
         sinceBar_ = 0;
+        updateChord();
         if (patternSeed_ != (uint32_t)seed_) { newSeedPattern(); return; }
         if (lock_) return;
         const int every = ((evolve_ + loopBars_ - 1) / loopBars_) * loopBars_;   // whole patterns
@@ -471,7 +494,7 @@ private:
     bool stepPlays(int i) const
     {
         const Step& s = pattern_.s[i];
-        const bool hit = euclidHit(i, hits_, rotate_);
+        const bool hit = rhythmHit(rhythm_, i, hits_, rotate_);
         if (density_ <= 0.5f)
         {
             if (!hit) return false;
@@ -484,7 +507,7 @@ private:
 
     int firstHit() const
     {
-        for (int i = 0; i < kSteps; ++i) if (euclidHit(i, hits_, rotate_)) return i;
+        for (int i = 0; i < kSteps; ++i) if (rhythmHit(rhythm_, i, hits_, rotate_)) return i;
         return 0;
     }
 
@@ -494,12 +517,24 @@ private:
         const int len = kScaleLen[scale_];
         const int top = len * range_;
         int d = (i == 0) ? 0 : foldDeg(pattern_.s[i].deg, top);
-        if (i != 0 && (i & 3) == 0 && dice01(pattern_.s[i].tone) < 0.75f) d = nearestChordTone(d, len, top);
-        if (keys_ == kKeysInKey) d += keyShiftDeg_;
+        // Chord Stick: beat steps snap when their dice < 1.5 x stick (0.75 at the default 50 %,
+        // as in v1.0); other steps when their dice < 2 x (stick - 50 %).
+        if (i != 0)
+        {
+            const float tone = dice01(pattern_.s[i].tone);
+            const float chance = ((i & 3) == 0) ? 1.5f * chordStick_ : 2.0f * (chordStick_ - 0.5f);
+            if (tone < chance) d = nearestChordTone(d, len, top);
+        }
+        int shiftDeg = 0, shiftSemi = 0;
+        const bool chordsOn = chordProg_ > 0 && !noteOverride_;
+        if (chordsOn) chordShift(shiftDeg, shiftSemi);
+        else if (keys_ != kKeysOff) { shiftDeg = keyShiftDeg_; shiftSemi = keyShiftSemi_; }
+        const bool chromatic = keys_ == kKeysTranspose;
+        if (!chromatic) d += shiftDeg;
         const int oct = (d >= 0) ? d / len : -((-d + len - 1) / len);
         const int idx = d - oct * len;
         int note = 60 + root_ + 12 * octave_ + 12 * oct + kScaleNotes[scale_][idx];
-        if (keys_ == kKeysTranspose) note += keyShiftSemi_;
+        if (chromatic) note += shiftSemi;
         return clamp(note, 0, 127);
     }
 
@@ -529,7 +564,7 @@ private:
         }
         const Step& s = pattern_.s[i];
         const int note = pitchOf(i);
-        const bool accent = (((i & 3) == 0) && euclidHit(i, hits_, rotate_)) || dice01(s.acc) < (1.0f / 6.0f);
+        const bool accent = (((i & 3) == 0) && rhythmHit(rhythm_, i, hits_, rotate_)) || dice01(s.acc) < (1.0f / 6.0f);
         const bool legato = tie_ && voice_.active();
         if (legato) voice_.glideTo(note, accent); else voice_.trigger(note, accent);
         // A slide holds this note into the next step if that one plays.
@@ -581,20 +616,45 @@ private:
         if (heldCount_ == 0) return;
         int low = held_[0];
         for (int k = 1; k < heldCount_; ++k) low = std::min(low, held_[k]);
-        const int rel = ((low % 12) - root_ + 12) % 12;
-        const int len = kScaleLen[scale_];
-        int idx = 0;
-        for (int k = 0; k < len; ++k) if (kScaleNotes[scale_][k] <= rel) idx = k;
-        const int deg = (idx * 2 > len) ? idx - len : idx;           // nearest: up to half the scale
-        const int semi = rel >= 6 ? rel - 12 : rel;
-        const bool changed = deg != keyShiftDeg_ || semi != keyShiftSemi_;
+        int deg = 0, semi = 0;
+        shiftFor(((low % 12) - root_ + 12) % 12, deg, semi);
+        bool changed = deg != keyShiftDeg_ || semi != keyShiftSemi_;
         keyShiftDeg_ = deg; keyShiftSemi_ = semi;
-        if (keys_ == kKeysOff || !running_ || curStep_ < 0 || sinceStep_ >= lateSamples_) return;
+        if (keys_ == kKeysOff) return;
+        if (chordProg_ > 0 && !noteOverride_) changed = true;        // an MPC note takes over from Chords
+        noteOverride_ = true;
+        if (!running_ || curStep_ < 0 || sinceStep_ >= lateSamples_) return;
         if (playingStep_ == curStep_ && voice_.active() && (gateLeft_ > 0 || tie_))
         {
             if (changed) voice_.retune(pitchOf(curStep_));
         }
         else if (play_ == kPlayHeld) playStep(curStep_, 0, true);
+    }
+
+    // A chord root `rel` semitones above Root -> the line's shift: scale steps (nearest, snapped
+    // down into the scale) for In Key, semitones (nearest) for Transpose.
+    void shiftFor(int rel, int& deg, int& semi) const
+    {
+        const int len = kScaleLen[scale_];
+        int idx = 0;
+        for (int k = 0; k < len; ++k) if (kScaleNotes[scale_][k] <= rel) idx = k;
+        deg = (idx * 2 > len) ? idx - len : idx;                     // nearest: up to half the scale
+        semi = rel >= 6 ? rel - 12 : rel;
+    }
+
+    // The current built-in chord as a shift.
+    void chordShift(int& deg, int& semi) const
+    {
+        const Progression& p = kProgressions[chordProg_];
+        const int d = p.deg[chordPos_ % p.len];
+        shiftFor(kScaleNotes[kParentScale[scale_]][d], deg, semi);
+    }
+
+    // At Play and at each bar line: latch the progression and move to the chord for this bar.
+    void updateChord()
+    {
+        chordProg_ = chords_;
+        chordPos_ = (int)((barsPlayed_ / chordBars_) % kProgressions[chordProg_].len);   // 0 = the bar Play started in
     }
 
     // ----- Cut Drift: smooth value noise over the bar count, a new point every 4 bars -----
@@ -645,7 +705,7 @@ private:
         info.name         = "OCKM DRIFT";
         info.vendor       = "OCKM";   // must match plugin.json "manufacturer"
         info.uniqueId     = MPC_FOURCC(kUid[0], kUid[1], kUid[2], kUid[3]);   // must match plugin.json "uid"
-        info.version      = 1000;     // 1.0.0.0
+        info.version      = 1100;     // 1.1.0.0
         info.isInstrument = true;
         info.numInputs    = 0;
         info.numOutputs   = 2;
@@ -666,6 +726,11 @@ private:
     int keys_ = kKeysInKey, play_ = kPlayAlways, evolve_ = 2, seed_ = 1, scale_ = 0, root_ = 9;
     int range_ = 1, octave_ = 0, hits_ = 7, rotate_ = 0, rate_ = 0;
     bool runStop_ = false, lock_ = false;
+    float chordStick_ = 0.5f;
+    int chords_ = 0, chordBars_ = 1, rhythm_ = 0;
+    // v1.1 built-in chords: progression and position latched at bar lines; MPC notes override
+    int chordProg_ = 0, chordPos_ = 0;
+    bool noteOverride_ = false;
 
     // clock
     double bps_ = 2.0 / 44100.0, stepBeats_ = 0.25, stepSamples_ = 5512.5, freePos_ = 0.0;

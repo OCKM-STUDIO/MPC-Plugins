@@ -480,8 +480,9 @@ def dump_pairs(o, indent=0):
 
 
 HEADINGS = {"SOUND": ["FILTER", "OSC", "AMP", "PLAY"],
-            "GEN": ["EVOLVE", "NOTES", "RHYTHM", "MOVE"]}
-BADGES = {"GEN": (3, 3)}          # (column, row) of the empty slot that carries the name badge
+            "GEN": ["EVOLVE", "NOTES", "RHYTHM", "MOVE"],
+            "HARMONY": ["CHORDS", "", "", ""]}
+BADGES = {"HARMONY": (3, 1)}          # (column, row) of the empty slot that carries the name badge
 
 TINTS = {
     # rgb: colour of the metal; lum: brightness shift; plate: label strips; background: overlay colour

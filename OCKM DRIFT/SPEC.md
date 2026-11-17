@@ -446,3 +446,204 @@ Mutate 0% unchanged over 64 bars at every Evolve; Mutate 25% at Evolve 4 changed
 bars, only on 4-bar lines, notes moving at most 2 scale steps; Lock held 27 bars at Mutate 100%
 and came back from saved state; exact silence 0.25 s after Stop; a chord note 10 ms late
 re-pitches the downbeat; CPU 0.13% of one desktop core.
+
+## 14. v1.1: Chords, Chord Stick and Rhythm (built, v1.1.0)
+
+Status: **built 2026-11-17** (Simon: "Go ahead"). Build 0 errors / 0 warnings, host_sim 18/18
+with the one expected warning, harness ALL PASS (including note-for-note v1.0 compatibility over
+4,432 recorded notes and a v1.0 saved project). Not yet tried on the MPC One. Section 14.11 lists
+what the build settled.
+
+Simon asked for three additions (2026-11-17). They are added as **new parameters at the end** of
+the list, and their defaults reproduce v1.0 exactly, so existing projects and presets play the
+same line note for note (harness check against a v1.0 recording). Version 1.1.0.
+
+### 14.1 Chord Stick: how close the line sticks to the chord
+
+At the moment, notes on the beats move to a chord tone (1st, 3rd or 5th of the current chord)
+75% of the time, and the other steps never do. **Chord Stick** (0–100%) makes that a knob. Each
+step still uses its own dice value, so the choice is repeatable and follows the Seed:
+
+| Chord Stick | Beat steps (5, 9, 13) | Other steps |
+|---|---|---|
+| **0%** | free: any scale note the walk lands on | free |
+| **25%** | chord tone 3 times in 8 | free |
+| **50%** (default = v1.0) | chord tone 3 times in 4 | free |
+| **75%** | always a chord tone | chord tone half the time |
+| **100%** | always a chord tone | **always a chord tone**: an arpeggio of the chord |
+
+(The rule: a beat step snaps when its dice value is below 1.5 × Chord Stick; any other step when
+it is below 2 × (Chord Stick − 50%).)
+
+- Step 1 stays the chord root at every setting (the anchor that makes chord changes audible).
+- "The chord" is the triad on the current chord root, built from the Scale: in A minor with the
+  chord on F, the chord tones are F, A and C. It follows MPC notes (section 4) and the built-in
+  Chords (14.2) the same way.
+- A note moves to the **nearest** chord tone (at most one or two scale steps), so the line keeps
+  its shape. It stays inside Range.
+
+### 14.2 Chords: a built-in progression
+
+**Chords** picks a progression for the line to follow by itself, so you don't have to write
+chord notes in the MPC. The chords are **scale degrees** of the Scale and Root you've set, so
+every progression works in any key and scale, and every note stays in key:
+
+| # | Chords | In A minor | Feel |
+|---|---|---|---|
+| 0 | **Off** (default) | follows MPC notes, as in v1.0 | |
+| 1 | **1-6-3-7** | Am F C G | the classic emotional minor loop |
+| 2 | **1-4** | Am Dm | deep, two-chord house |
+| 3 | **1-7-6-7** | Am G F G | driving, anthemic |
+| 4 | **1-5** | Am Em | dark techno pendulum |
+| 5 | **1-6-4-5** | Am F Dm Em | soulful, deep house |
+| 6 | **1-3-4-6** | Am C Dm F | rising, uplifting |
+| 7 | **2-5-1-1** | Bdim Em Am Am | turnaround (sounds jazziest in Dorian or Major) |
+
+- **Chord Bars** (1, 2 or 4 bars per chord; default 1) sets how long each chord lasts.
+- The chords move the line exactly as MPC notes do (section 4): **In Key** moves it by scale
+  steps; with Keys on **Transpose** the whole line moves by the chord's semitones instead. With
+  Keys **Off** the progression still plays (Keys Off only means "ignore MPC notes").
+- In the pentatonic scales, the chord degree is taken from the matching seven-note scale (Minor
+  Pent → Minor, Major Pent → Major) and then snapped into the pentatonic scale, so it stays in key.
+- **Timing:** chord changes land on bar lines. The progression starts from its first chord every
+  time you press Play, counting bars played (like Evolve), so starting from the top of your song
+  keeps it in step. It can't see your MPC sequence, so if you start mid-song it may sit a chord
+  or two out against your other parts. An MPC loop of a whole number of chord cycles (for example
+  4 bars at 1 bar per chord) stays in step.
+- **MPC notes always win:** as soon as a note arrives from the MPC (pad or sequence), the
+  progression steps aside and the line follows your notes until the next time you press Play.
+  So you can use the progression to sketch, then write your own chords and they take over.
+- With Play on **Held**, the line still only plays while a note is held (and that note sets the
+  chord, as above).
+
+### 14.3 Rhythm: hand-picked grooves
+
+The even-spread rhythm (Hits) is good at rolling, even patterns but can't make the lopsided
+figures house and techno lean on. **Rhythm** picks the base rhythm (x = note, . = rest):
+
+| # | Rhythm | Pattern | Use |
+|---|---|---|---|
+| 0 | **Even (Hits)** (default = v1.0) | from Hits | as in v1.0 |
+| 1 | **Offbeat** | `..x...x...x...x.` | the classic between-the-kicks stab |
+| 2 | **Rolling** | `.xxx.xxx.xxx.xxx` | rolling techno: every 16th except on the kick |
+| 3 | **Gallop** | `x.xxx.xxx.xxx.xx` | an 8th and two 16ths, every beat |
+| 4 | **Syncopated** | `x..x..x...x..x..` | 3-3-4-3-3 push |
+| 5 | **Two-Step** | `x.....x.x.....x.` | broken, swung |
+| 6 | **Stab** | `..x....x..x.....` | sparse stabs |
+| 7 | **Call** | `x.xx.x.x........` | busy first half, an empty second half to answer |
+
+- **Hits** only works on Even; the other rhythms ignore it (and the Hits knob shows its value as
+  usual, just with no effect).
+- **Rotate**, **Density**, **Slide** and **Mutate** work on every rhythm exactly as before:
+  Density 50% plays exactly the pattern, lower drops notes, higher fills the gaps (from the same
+  dice, so it stays repeatable), and the line keeps evolving.
+- Accents: as before, notes on the beats are accented, plus about one in six others.
+- Ideas for these grooves come from OCKM GENERATOR's rhythm lists; the patterns are written fresh.
+
+### 14.4 New parameters (appended; order and ids permanent once built)
+
+| # | id | Name | Range | Default |
+|---|---|---|---|---|
+| 31 | `chordstick` | Chord Stick | 0–100% | 50% (= v1.0) |
+| 32 | `chords` | Chords | Off, 1-6-3-7, 1-4, 1-7-6-7, 1-5, 1-6-4-5, 1-3-4-6, 2-5-1-1 | Off |
+| 33 | `chordbars` | Chord Bars | 1 Bar, 2 Bars, 4 Bars | 1 Bar |
+| 34 | `rhythm` | Rhythm | Even, Offbeat, Rolling, Gallop, Syncopated, Two-Step, Stab, Call | Even |
+
+All four are automatable (Chords and Rhythm can be changed by automation in the sequence; a
+change lands on the next step, and a Chords change on the next bar line).
+
+### 14.5 UI: a third page
+
+The screen layout isn't permanent (only parameter ids and order are), so the GEN page is tidied
+to make room and a third page added:
+
+| GEN | | | |
+|---|---|---|---|
+| **EVOLVE** | **NOTES** | **RHYTHM** | **MOVE** |
+| Mutate | Scale | Rhythm | Rate |
+| Evolve | Root | Hits | Slide |
+| Seed | Range | Rotate | Swing |
+| Lock | Octave | Density | Cut Drift |
+
+| HARMONY | | | |
+|---|---|---|---|
+| **CHORDS** | | | |
+| Chords | | | |
+| Chord Bars | | | *OCKM DRIFT badge* |
+| Chord Stick | | | |
+| | | | |
+
+- The badge moves from GEN to HARMONY; HARMONY's other columns stay empty, ready for v2 (for
+  example the MIDI-out settings, if that goes ahead).
+- SOUND and the Program-mode Q-Links are unchanged.
+- Choices use the slider-with-menu control, as before. The value texts (`1-6-3-7` and so on) are
+  drawn by the MPC, so the panel font needs nothing new (the CHORDS heading uses letters it has).
+
+### 14.6 Presets: three new ones (12 in all)
+
+The nine v1.0 presets are unchanged (the new parameters sit at their defaults). Three are added
+at the end of the list to show off the new features:
+
+| # | Name | The line | Main settings |
+|---|---|---|---|
+| 10 | **Chord Rider** | follows a progression by itself, sticking close to the chords | A Minor, Chords 1-6-3-7, Chord Bars 2, Chord Stick 80, Hits 7, Mutate 20 |
+| 11 | **Offbeat Stabs** | short stabs between the kicks, moving through 1-4 | D Dorian, Rhythm Offbeat, Chords 1-4, Chord Bars 2, Length 25, Decay 20, Chord Stick 100 |
+| 12 | **Rolling Bass** | a rolling techno bassline on 1-5 | F Phrygian, Rhythm Rolling, Octave −2, Chords 1-5, Chord Bars 4, Sub 60, Cutoff 30, Mutate 20 |
+
+### 14.7 CPU, realtime, state
+
+- Everything new happens once per step or once per bar (a few dozen operations). No change to the
+  per-sample cost or the CPU budget.
+- State: the saved pattern is unchanged (Chords, Chord Stick and Rhythm are parameters).
+  Projects saved with v1.0 load with the new parameters at their defaults, so they play exactly
+  as before.
+
+### 14.8 Not in v1.1
+
+Writing your own progression step by step; more than 8 progressions or 8 rhythms; seventh or
+ninth chords; chord tones other than 1-3-5; a chord display on the screen (same reason as the
+step display); a sound switch (lead/bass/stab/pluck): possible later; MIDI output: a separate
+look (section 14.10).
+
+### 14.9 Tests added to the harness
+
+- **v1.0 compatibility:** before any v1.1 code, record v1.0's note log (Init Drift and four other
+  presets, 32 bars, with and without MPC chord notes). v1.1 at default settings must reproduce it
+  note for note, and a v1.0 saved state must load and play the same.
+- **Chord Stick:** at 0% no step is snapped (notes = the folded walk); at 100% every note is a
+  chord tone of the current chord (with MPC chords and with the built-in Chords); at 50%
+  identical to v1.0; notes never leave Range.
+- **Chords:** for every progression × Chord Bars × Scale × Root, step 1 of each bar is the right
+  chord root, chords change only on bar lines, and every note is in key; Transpose moves by the
+  chord's semitones; a pressed MPC note takes over and keeps control until the next Play; the
+  progression restarts on Play.
+- **Rhythm:** at Density 50% each rhythm plays exactly its pattern (shifted by Rotate); 0% plays
+  nothing; 100% plays every step; Mutate still evolves it; Hits has no effect except on Even.
+- All existing checks still pass (same Seed, Lock, Mutate 0, grid, silence, no clipping across
+  all 12 presets).
+
+### 14.10 Separate: MIDI output
+
+Kept out of v1.1 on purpose. Whether DRIFT can also send its line as MIDI (through its own MIDI
+port, as another developer's plugin does) depends first on a test on the MPC One, then gets its
+own SPEC section.
+
+### 14.11 Settled while building (v1.1.0)
+
+1. **Compatibility is recorded, not assumed:** `tests/v1_0_notes.txt` (4,432 notes: the nine v1.0
+   presets over 32 bars, with and without MPC chord notes) and `tests/v1_0_state.hex` (a v1.0
+   project with a locked line) were recorded from the v1.0 code before any change. The harness
+   replays them against v1.1.
+2. **Chord Stick at 50% is exactly v1.0:** the knob is read as its 0–1 position, so the default
+   gives a beat-step threshold of exactly 0.75, as v1.0 had.
+3. **A note held when Play is pressed** keeps control over Chords (so Held mode with Chords on
+   follows the held note from the first step).
+4. Programs 10–12 appended; info version 1100, plugin.json 1.1.0. The HARMONY page's Q-Links map
+   Chords, Chord Bars and Chord Stick; Program-mode Q-Links are unchanged from v1.0.
+
+Harness results (selection): 504 renders of every progression × Chord Bars × Scale × 3 roots with
+step 1 always the right chord root and every note in key; Transpose moves by the chord's
+semitones; Chord Stick 100% makes every note a chord tone with built-in Chords and with MPC chord
+notes; every groove × Rotate plays exactly its pattern at Density 50%; all 12 presets peak between
+−3.8 and −6.5 dBFS; CPU 0.16% of one desktop core. `build/demo.wav` (3 min 50 s) now ends each
+preset tour with the three v1.1 presets.

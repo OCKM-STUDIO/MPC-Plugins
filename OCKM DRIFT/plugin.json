@@ -1,7 +1,7 @@
 {
   "name": "OCKM DRIFT",
   "manufacturer": "OCKM",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "format": "vst2",
   "kind": "instrument",
   "uid": "O8z7",
@@ -10,7 +10,7 @@
   "category": "Synth",
   "file32": "VST/ockm-drift-arm32.so",
   "file64": "VST/ockm-drift-arm64.so",
-  "description": "OCKM DRIFT: a generative retro analogue mono lead. Plays its own 16-step line synced to the MPC, which slowly evolves in key (Mutate, Seed, Lock, Euclidean rhythm); MPC notes move it with your chords.",
+  "description": "OCKM DRIFT: a generative retro analogue mono lead. Plays its own 16-step line synced to the MPC, which slowly evolves in key (Mutate, Seed, Lock, grooves, Euclidean rhythm), following built-in chord progressions or your MPC notes.",
   "author": "OCKM",
   "url": "",
   "license": "MIT"

@@ -36,10 +36,31 @@ pads, OCKM Gate for pumping, OCKM DRIFT for the lead.
   with a chance of **Mutate**, in one small way: its note walks one or two scale steps, or its
   rhythm, accent or slide is re-rolled. Mutate 0% never changes anything; even 100% only moves
   notes in small steps, so it never turns into noise.
+- **Rhythm** (v1.1) picks the base groove: **Even** (from Hits, as above), **Offbeat**
+  (`..x...x...x...x.`), **Rolling** (`.xxx.xxx.xxx.xxx`), **Gallop**, **Syncopated**, **Two-Step**,
+  **Stab** or **Call** (busy first half, empty second half). Rotate, Density, Slide and Mutate work
+  on every groove; Hits only on Even.
+- **Chord Stick** (v1.1): how close the line sticks to the chord. 0% wanders freely through the
+  scale, 50% (default, as v1.0) puts most beats on chord notes, 100% makes every note a chord note
+  (an arpeggio of the chord). Step 1 is always the chord's root.
 - **Cut Drift:** a slow, smooth wander of the filter (up to ±2 octaves, a new target every 4
   bars), repeatable from the Seed. 0% = off.
 - If your MPC sequence loops (say 2 bars), the line still keeps evolving: it counts bars played,
   not bars of the sequence.
+
+## Chords (v1.1)
+
+**Chords** makes the line follow a progression by itself, so you don't need to write chord notes.
+The chords are steps of your Scale (1 = the root), so they work in any key and stay in key:
+**1-6-3-7** (Am F C G in A minor), **1-4**, **1-7-6-7**, **1-5**, **1-6-4-5**, **1-3-4-6**,
+**2-5-1-1**. **Chord Bars** sets 1, 2 or 4 bars per chord.
+
+- The progression starts from its first chord every time you press Play, counting bars played,
+  so start from the top of your song to keep it in step with your other parts.
+- **Your MPC notes win:** as soon as you play or sequence a note, the line follows your notes until
+  the next Play. Sketch with a progression, then write your own chords and they take over.
+- With Keys on Transpose the chords move the line by semitones; with Keys Off the progression still
+  plays (Keys Off only ignores MPC notes).
 
 ## Notes from the MPC
 
@@ -88,10 +109,17 @@ lowest note counts.
 | GEN | | | |
 |---|---|---|---|
 | **EVOLVE** | **NOTES** | **RHYTHM** | **MOVE** |
-| Mutate | Scale | Hits | Slide |
-| Evolve | Root | Rotate | Cut Drift |
-| Seed | Range | Density | Swing |
-| Lock | Octave | Rate | *badge* |
+| Mutate | Scale | Rhythm | Rate |
+| Evolve | Root | Hits | Slide |
+| Seed | Range | Rotate | Swing |
+| Lock | Octave | Density | Cut Drift |
+
+| HARMONY | | | |
+|---|---|---|---|
+| **CHORDS** | | | |
+| Chords | | | |
+| Chord Bars | | | *badge* |
+| Chord Stick | | | |
 
 Each column is one Q-Link bank. Cutoff is the top-left knob on SOUND, Mutate the top-left on
 GEN. In Program mode the Q-Links follow the SOUND page, except that the PLAY column becomes
@@ -110,14 +138,20 @@ GEN. In Program mode the Q-Links follow the SOUND page, except that the PLAY col
 | Deep Walker | a walking bassline (two octaves down) |
 | Chaos Garden | restless and busy, still in key |
 | Frozen Hook | a hook that stays put (Lock on, Seed 42) |
+| Chord Rider | follows 1-6-3-7 by itself (2 bars a chord), sticking close to the chords |
+| Offbeat Stabs | short stabs between the kicks, moving through 1-4 |
+| Rolling Bass | a rolling techno bassline on 1-5 (4 bars a chord) |
 
-Over 16 bars (8 with chord changes) they peak between −3.8 and −6.3 dBFS. `build/demo.wav`
-(3 minutes) plays Init Drift evolving for 16 bars, 8 bars of each other preset, then Init Drift
-following A – F – C – G.
+Over 16 bars (8 with chord changes) they peak between −3.8 and −6.5 dBFS. `build/demo.wav`
+(about 4 minutes) plays Init Drift evolving for 16 bars, 8 bars of each other preset, then Init
+Drift following A – F – C – G.
+
+**v1.1 changed nothing for existing projects:** the new controls start where v1.0 was, and the
+harness replays 4,432 notes recorded from v1.0 (and a v1.0 saved project) note for note.
 
 ## Honest notes
 
-- **CPU:** one voice, always: about 0.13% of one desktop core playing every 16th (harness). The
+- **CPU:** one voice, always: about 0.16% of one desktop core playing every 16th (harness). The
   MPC One is roughly 10–40× slower, so expect about 2–5% of one core. **Not yet measured on the
   MPC One.**
 - **The output never clips:** a soft ceiling above −3 dBFS keeps even everything at maximum with
@@ -135,7 +169,9 @@ following A – F – C – G.
 
 A live step display (the MPC skin can only show parameter values; showing the playing step would
 mean changing 16 parameters every step, which the MPC records as knob moves); pattern lengths
-other than 16 steps, triplet rates; editing single steps; polyphony, chords, unison; MIDI out;
+other than 16 steps, triplet rates; editing single steps; writing your own chord progression,
+seventh chords, a chord display; a sound switch (lead/bass/stab/pluck); MIDI output (being looked
+at separately); polyphony, chords, unison; MIDI out;
 following the MPC's swing setting; phrase tricks (call and answer, fills); custom scales; knobs
 for accent chance, oscillator drift, key tracking or filter attack; LFOs, vibrato, pitch bend,
 mod wheel, velocity from incoming notes; effects (use the MPC's insert effects); other filter

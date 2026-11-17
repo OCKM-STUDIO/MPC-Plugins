@@ -96,12 +96,14 @@
           "overlay": "menu"
         },
         {
-          "param": "Hits",
-          "widget": "knob"
+          "param": "Rhythm",
+          "widget": "slider",
+          "overlay": "menu"
         },
         {
-          "param": "Slide",
-          "widget": "knob"
+          "param": "Rate",
+          "widget": "slider",
+          "overlay": "menu"
         },
         {
           "param": "Evolve",
@@ -114,11 +116,11 @@
           "overlay": "menu"
         },
         {
-          "param": "Rotate",
+          "param": "Hits",
           "widget": "knob"
         },
         {
-          "param": "Cut Drift",
+          "param": "Slide",
           "widget": "knob"
         },
         {
@@ -130,7 +132,7 @@
           "widget": "knob"
         },
         {
-          "param": "Density",
+          "param": "Rotate",
           "widget": "knob"
         },
         {
@@ -146,9 +148,67 @@
           "widget": "knob"
         },
         {
-          "param": "Rate",
+          "param": "Density",
+          "widget": "knob"
+        },
+        {
+          "param": "Cut Drift",
+          "widget": "knob"
+        }
+      ]
+    },
+    {
+      "name": "HARMONY",
+      "controls": [
+        {
+          "param": "Chords",
           "widget": "slider",
           "overlay": "menu"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "param": "Chord Bars",
+          "widget": "slider",
+          "overlay": "menu"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "param": "Chord Stick",
+          "widget": "knob"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "widget": "empty"
+        },
+        {
+          "widget": "empty"
         },
         {
           "widget": "empty"

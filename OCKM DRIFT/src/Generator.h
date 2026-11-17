@@ -141,4 +141,46 @@ inline bool euclidHit(int step, int hits, int rotate)
     return (i * hits) % kSteps < hits;
 }
 
+// v1.1 Rhythm: hand-picked grooves (bit i = step i plays). Index 0 (Even) uses Hits instead.
+constexpr int kNumRhythms = 8;
+inline uint16_t rhythmMask(const char* p)
+{
+    uint16_t m = 0;
+    for (int i = 0; i < 16 && p[i]; ++i) if (p[i] == 'x') m = (uint16_t)(m | (1u << i));
+    return m;
+}
+inline bool rhythmHit(int rhythm, int step, int hits, int rotate)
+{
+    if (rhythm <= 0 || rhythm >= kNumRhythms) return euclidHit(step, hits, rotate);
+    static const char* const kPatterns[kNumRhythms] = {
+        "",
+        "..x...x...x...x.",   // Offbeat
+        ".xxx.xxx.xxx.xxx",   // Rolling
+        "x.xxx.xxx.xxx.xx",   // Gallop
+        "x..x..x...x..x..",   // Syncopated
+        "x.....x.x.....x.",   // Two-Step
+        "..x....x..x.....",   // Stab
+        "x.xx.x.x........",   // Call
+    };
+    const int i = ((step - rotate) % 16 + 16) % 16;
+    return (rhythmMask(kPatterns[rhythm]) >> i) & 1u;
+}
+
+// v1.1 Chords: progressions as scale degrees (0 = the root), up to 4 chords.
+constexpr int kNumProgressions = 8;   // index 0 = Off
+struct Progression { int len; int deg[4]; };
+constexpr Progression kProgressions[kNumProgressions] = {
+    {1, {0, 0, 0, 0}},   // Off
+    {4, {0, 5, 2, 6}},   // 1-6-3-7
+    {2, {0, 3, 0, 0}},   // 1-4
+    {4, {0, 6, 5, 6}},   // 1-7-6-7
+    {2, {0, 4, 0, 0}},   // 1-5
+    {4, {0, 5, 3, 4}},   // 1-6-4-5
+    {4, {0, 2, 3, 5}},   // 1-3-4-6
+    {4, {1, 4, 0, 0}},   // 2-5-1-1
+};
+constexpr int kChordBarsTable[3] = {1, 2, 4};
+// The seven-note scale a chord degree is read from (pentatonics use their parent scale).
+constexpr int kParentScale[8] = {0, 1, 2, 3, 4, 5, 0, 3};
+
 } // namespace ockm_drift
